@@ -30,12 +30,14 @@ go run . analyze --kubeconfig ~/.kube/my-cluster.yaml
 
 ## Tests
 
-No automated tests yet. When adding them, use `fake.NewSimpleClientset()` from `k8s.io/client-go/kubernetes/fake` to construct an in-memory Kubernetes client — do not mock at the rule function level.
+Tests use `fake.NewSimpleClientset()` from `k8s.io/client-go/kubernetes/fake` — no cluster required.
 
 ```bash
-go test ./...                        # run all tests
-go test ./internal/rules/...         # run rule tests only
-go test ./internal/rules/... -run TestCheckSingleReplica  # run a single test
+go test ./...                                                          # run all tests
+go test ./internal/rules/...                                           # run rule tests only
+go test ./internal/rules/... -run TestCheckSingleReplica              # run a single test
+go test ./internal/rules/... -run TestCheckSingleReplica/deployment   # run a single sub-test
+go test ./internal/rules/... -v                                        # verbose output
 ```
 
 ## Test cluster (kind)
