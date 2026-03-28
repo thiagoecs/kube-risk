@@ -53,7 +53,7 @@ func Print(w io.Writer, findings []rules.Finding, opts Options) {
 		fmt.Fprintln(w, "  Showing config quality issues that will carry into production if not fixed.")
 		fmt.Fprintln(w, "  Scale rules skipped (single-replica, missing-pdb) — expected to differ in dev.")
 	} else {
-		fmt.Fprintf(w, "  KUBE-RISK REPORT   %d findings  [HIGH: %d  MEDIUM: %d  LOW: %d]\n",
+		fmt.Fprintf(w, "  KUBE-RISK REPORT (production)   %d findings  [HIGH: %d  MEDIUM: %d  LOW: %d]\n",
 			len(sorted), high, medium, low)
 	}
 	fmt.Fprintln(w, strings.Repeat("─", 72))
