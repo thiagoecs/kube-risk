@@ -1,0 +1,18 @@
+# Normalize line endings to LF in the repo, check out as LF on all platforms.
+# This prevents CRLF/LF conflicts when collaborating across Windows and Linux/Mac.
+* text=auto eol=lf
+
+# Go source files
+*.go text eol=lf
+
+# YAML
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Binary — never touch line endings
+*.exe binary
+*.png binary
+*.jpg binary
