@@ -73,8 +73,9 @@ test-cluster/
 2. Register it in `internal/rules/runner.go` inside the `allRules` slice.
 3. Add a base score entry to the `baseScores` map in `internal/rules/scoring.go` using the key `"rule-id:SEVERITY"`. Without an entry it falls back to 7/4/2 by severity.
 4. Add an entry to `whyItMatters()` in `internal/report/printer.go` for the "Fix this first" rationale.
-5. Add a test workload to `test-cluster/broken-workloads.yaml` that triggers it.
-6. Run `go build ./...` and `go run . analyze -n risky-apps` to confirm.
+5. Only set `Finding.Fix` if the correct fix is unambiguous and safe to generate — commands or YAML where the values can be derived mechanically from the workload spec. Leave it empty if the fix requires knowledge of the app (ports, clustering, startup behaviour).
+6. Add a test workload to `test-cluster/broken-workloads.yaml` that triggers it.
+7. Run `go build ./...` and `go run . analyze -n risky-apps` to confirm.
 
 ## Key conventions
 
@@ -90,6 +91,6 @@ test-cluster/
 |---------|-------|
 | V1 | CLI + 5 rules + report — **done** |
 | V2 | Risk scoring, prioritization, environment awareness — **done** |
-| V3 | Specific fix recommendations per finding |
+| V3 | Specific fix recommendations per finding — **done** |
 | V4 | GitHub/GitLab PR generation with YAML fixes |
 | V5 | LLM layer that reads repo and adapts to team conventions |
