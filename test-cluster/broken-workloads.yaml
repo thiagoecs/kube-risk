@@ -1,0 +1,164 @@
+# ============================================================
+# kube-risk test workloads — intentionally broken configurations
+# Each workload is designed to trigger one or more V1 rules.
+# ============================================================
+
+# ── Namespace ────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: risky-apps
+
+---
+# ── 1. Triggers: single-replica + missing-pdb + missing-readiness-probe ──
+# A typical "just works in dev" deployment that someone forgot to harden.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-resilience
+  namespace: risky-apps
+spec:
+  replicas: 1          # single replica = HIGH
+  selector:
+    matchLabels:
+      app: no-resilience
+  template:
+    metadata:
+      labels:
+        app: no-resilience
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+          # No readinessProbe = HIGH
+
+---
+# ── 2. Triggers: unsafe-rollout (maxUnavailable=100%) ────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-rollout
+  namespace: risky-apps
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: bad-rollout
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 3    # 75% of 4 = very dangerous
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        app: bad-rollout
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+# ── 3. Triggers: risky-statefulset (OnDelete strategy) ───────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: on-delete-db
+  namespace: risky-apps
+spec:
+  replicas: 2
+  serviceName: on-delete-db
+  selector:
+    matchLabels:
+      app: on-delete-db
+  updateStrategy:
+    type: OnDelete    # HIGH — changes won't roll out automatically
+  template:
+    metadata:
+      labels:
+        app: on-delete-db
+    spec:
+      containers:
+        - name: db
+          image: nginx:stable
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# ── 4. Triggers: risky-statefulset (Parallel) + single-replica ──
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: parallel-statefulset
+  namespace: risky-apps
+spec:
+  replicas: 1           # single replica = HIGH
+  serviceName: parallel-statefulset
+  podManagementPolicy: Parallel   # MEDIUM
+  selector:
+    matchLabels:
+      app: parallel-statefulset
+  template:
+    metadata:
+      labels:
+        app: parallel-statefulset
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+
+---
+# ── 5. A "good" deployment — should produce ZERO findings ────
+# Has 3 replicas, a readiness probe, a sensible rollout, AND a PDB.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: well-configured
+  namespace: risky-apps
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: well-configured
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: well-configured
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: well-configured-pdb
+  namespace: risky-apps
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: well-configured

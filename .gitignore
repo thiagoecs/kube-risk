@@ -1,0 +1,14 @@
+# Build output
+kube-risk.exe
+kube-risk
+
+# kind binary (downloaded locally, not source code)
+kind.exe
+
+# Go workspace files
+go.work
+go.work.sum
+
+# OS
+.DS_Store
+Thumbs.db
