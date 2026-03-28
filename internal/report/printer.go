@@ -43,6 +43,9 @@ func Print(w io.Writer, findings []rules.Finding) {
 			i+1, icon, f.Namespace, f.Name, f.Kind, f.Score)
 		fmt.Fprintf(w, "    Rule: %s\n", f.Rule)
 		fmt.Fprintln(w, wordWrap(f.Message, 68, "    "))
+		if f.Fix != "" {
+			printFix(w, f.Fix, "    ")
+		}
 	}
 
 	// ── Workload summary ──────────────────────────────────────────────────────
@@ -119,6 +122,9 @@ func printFixThisFirst(w io.Writer, findings []rules.Finding) {
 		fmt.Fprintf(w, "\n  #%d  %s  %s/%s (%s)   score: %d/10\n",
 			i+1, icon, f.Namespace, f.Name, f.Kind, f.Score)
 		fmt.Fprintln(w, wordWrap(whyItMatters(f), 68, "      "))
+		if f.Fix != "" {
+			printFix(w, f.Fix, "      ")
+		}
 	}
 	fmt.Fprintln(w)
 }
@@ -212,6 +218,20 @@ func less(a, b rules.Finding) bool {
 		return ao < bo // HIGH before MEDIUM before LOW
 	}
 	return a.Score > b.Score // higher score first within the same severity
+}
+
+// printFix renders a fix block with a clear header so it stands out from the
+// finding description. indent is the base indentation string for the block.
+func printFix(w io.Writer, fix, indent string) {
+	// Total line width is 72 chars. Subtract indent and box chrome to get fill width.
+	width := 72 - len(indent)
+	header := "─ Suggested fix "
+	fill := strings.Repeat("─", width-len(header)-2) // 2 for ┌ and space
+	fmt.Fprintf(w, "\n%s┌%s%s\n", indent, header, fill)
+	for _, line := range strings.Split(fix, "\n") {
+		fmt.Fprintf(w, "%s│  %s\n", indent, line)
+	}
+	fmt.Fprintf(w, "%s└%s\n", indent, strings.Repeat("─", width-1))
 }
 
 // wordWrap wraps text at maxWidth characters, preserving indent on each line.

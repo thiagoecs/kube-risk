@@ -3,6 +3,8 @@ package rules
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -49,6 +51,7 @@ func CheckMissingPDB(ctx context.Context, client kubernetes.Interface, namespace
 						"Create a PDB with minAvailable or maxUnavailable to protect this workload.",
 					d.Name,
 				),
+				Fix: pdbFix(d.Name, d.Namespace, d.Spec.Template.Labels),
 			})
 		}
 	}
@@ -72,6 +75,7 @@ func CheckMissingPDB(ctx context.Context, client kubernetes.Interface, namespace
 						"require manual recovery. Add a PDB to prevent simultaneous eviction.",
 					ss.Name,
 				),
+				Fix: pdbFix(ss.Name, ss.Namespace, ss.Spec.Template.Labels),
 			})
 		}
 	}
@@ -98,4 +102,38 @@ func labelsMatch(podLabels, selectorLabels map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// pdbFix generates a ready-to-apply PodDisruptionBudget manifest using the
+// workload's actual pod template labels. We sort the keys so the output is
+// deterministic across runs.
+func pdbFix(name, namespace string, labels map[string]string) string {
+	// Sort label keys for deterministic output
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var labelLines strings.Builder
+	for _, k := range keys {
+		fmt.Fprintf(&labelLines, "        %s: %s\n", k, labels[k])
+	}
+
+	return fmt.Sprintf(
+		"# Save as %s-pdb.yaml and run: kubectl apply -f %s-pdb.yaml\n"+
+			"apiVersion: policy/v1\n"+
+			"kind: PodDisruptionBudget\n"+
+			"metadata:\n"+
+			"  name: %s-pdb\n"+
+			"  namespace: %s\n"+
+			"spec:\n"+
+			"  minAvailable: 1\n"+
+			"  selector:\n"+
+			"    matchLabels:\n"+
+			"%s\n"+
+			"Why minAvailable: 1 — at least one pod stays running during any node\n"+
+			"drain, regardless of replica count. Raise it if you need higher guarantees.",
+		name, name, name, namespace, strings.TrimRight(labelLines.String(), "\n"),
+	)
 }

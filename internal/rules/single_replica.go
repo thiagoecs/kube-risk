@@ -38,6 +38,12 @@ func CheckSingleReplica(ctx context.Context, client kubernetes.Interface, namesp
 						"Set replicas >= 2 to ensure continuity.",
 					d.Name, replicas,
 				),
+				Fix: fmt.Sprintf(
+					"kubectl scale deployment %s -n %s --replicas=2\n\n"+
+						"Why 2: the minimum needed to keep one pod running while another is\n"+
+						"evicted during a node drain. Scale higher based on your traffic needs.",
+					d.Name, d.Namespace,
+				),
 			})
 		}
 	}
@@ -64,6 +70,13 @@ func CheckSingleReplica(ctx context.Context, client kubernetes.Interface, namesp
 						"no redundancy — any pod disruption means complete downtime. "+
 						"Consider scaling to >= 2 replicas if the workload supports it.",
 					ss.Name, replicas,
+				),
+				Fix: fmt.Sprintf(
+					"kubectl patch statefulset %s -n %s -p '{\"spec\":{\"replicas\":2}}'\n\n"+
+						"Why 2: the minimum for redundancy. Before applying, verify your app\n"+
+						"supports multiple replicas — some databases need extra configuration\n"+
+						"for replication or leader election.",
+					ss.Name, ss.Namespace,
 				),
 			})
 		}

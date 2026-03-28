@@ -55,6 +55,14 @@ func CheckUnsafeRollout(ctx context.Context, client kubernetes.Interface, namesp
 					strategy.RollingUpdate.MaxUnavailable,
 					float64(maxUnavailable)/float64(replicas)*100,
 				),
+				Fix: fmt.Sprintf(
+					"kubectl patch deployment %s -n %s \\\n"+
+						"  --type=json \\\n"+
+						"  -p='[{\"op\":\"replace\",\"path\":\"/spec/strategy/rollingUpdate/maxUnavailable\",\"value\":1}]'\n\n"+
+						"Why 1: allows updates to proceed one pod at a time, keeping all other\n"+
+						"replicas serving traffic. Safe for any replica count >= 2.",
+					d.Name, d.Namespace,
+				),
 			})
 		}
 	}
