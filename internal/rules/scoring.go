@@ -50,7 +50,9 @@ func clamp(v, min, max int) int {
 
 // ApplyScores computes and sets the Score field on each finding.
 // Call this once after all rules have run.
-func ApplyScores(findings []Finding) {
+// Namespace boost is skipped in development mode — namespace names in dev
+// clusters are arbitrary and don't reflect production risk.
+func ApplyScores(findings []Finding, environment string) {
 	for i := range findings {
 		f := &findings[i]
 		key := f.Rule + ":" + string(f.Severity)
@@ -66,6 +68,10 @@ func ApplyScores(findings []Finding) {
 				base = 2
 			}
 		}
-		f.Score = clamp(base+namespaceBoost(f.Namespace), 1, 10)
+		boost := 0
+		if environment != "development" {
+			boost = namespaceBoost(f.Namespace)
+		}
+		f.Score = clamp(base+boost, 1, 10)
 	}
 }

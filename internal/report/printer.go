@@ -20,10 +20,25 @@ var severityIcon = map[rules.Severity]string{
 	rules.SeverityLow:    "🟢 LOW   ",
 }
 
+// Options controls report rendering behaviour.
+type Options struct {
+	// Environment is "production" (default) or "development".
+	// Affects the report header and which rules were skipped.
+	Environment string
+}
+
 // Print writes a human-readable risk report to w.
-func Print(w io.Writer, findings []rules.Finding) {
+func Print(w io.Writer, findings []rules.Finding, opts Options) {
+	env := opts.Environment
+	if env == "" {
+		env = "production"
+	}
+
 	if len(findings) == 0 {
 		fmt.Fprintln(w, "✅  No risks found. Your cluster looks healthy!")
+		if env == "development" {
+			fmt.Fprintln(w, "    (scale rules skipped — run with --environment production for a full scan)")
+		}
 		return
 	}
 
@@ -32,8 +47,15 @@ func Print(w io.Writer, findings []rules.Finding) {
 
 	// ── Header ────────────────────────────────────────────────────────────────
 	fmt.Fprintln(w, strings.Repeat("─", 72))
-	fmt.Fprintf(w, "  KUBE-RISK REPORT   %d findings  [HIGH: %d  MEDIUM: %d  LOW: %d]\n",
-		len(sorted), high, medium, low)
+	if env == "development" {
+		fmt.Fprintf(w, "  KUBE-RISK REPORT (development)   %d findings  [HIGH: %d  MEDIUM: %d  LOW: %d]\n",
+			len(sorted), high, medium, low)
+		fmt.Fprintln(w, "  Showing config quality issues that will carry into production if not fixed.")
+		fmt.Fprintln(w, "  Scale rules skipped (single-replica, missing-pdb) — expected to differ in dev.")
+	} else {
+		fmt.Fprintf(w, "  KUBE-RISK REPORT   %d findings  [HIGH: %d  MEDIUM: %d  LOW: %d]\n",
+			len(sorted), high, medium, low)
+	}
 	fmt.Fprintln(w, strings.Repeat("─", 72))
 
 	// ── Findings list ─────────────────────────────────────────────────────────

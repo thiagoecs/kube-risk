@@ -9,8 +9,19 @@ import (
 
 // Runner holds the Kubernetes client and namespace scope, and runs all rules.
 type Runner struct {
-	Client    kubernetes.Interface
-	Namespace string // "" means all namespaces
+	Client      kubernetes.Interface
+	Namespace   string // "" means all namespaces
+	Environment string // "production" (default) or "development"
+}
+
+// devSkipRules lists rules that produce noise in development environments.
+// Single replicas and missing PDBs are intentional in dev — flagging them
+// trains operators to ignore the tool. Config quality rules (readiness probes,
+// rollout strategy, StatefulSet config) still run because those bugs will
+// follow the config into production if not caught here.
+var devSkipRules = map[string]bool{
+	"single-replica": true,
+	"missing-pdb":    true,
 }
 
 // RunAll executes every registered rule and aggregates the findings.
@@ -28,12 +39,15 @@ func (r *Runner) RunAll(ctx context.Context) ([]Finding, error) {
 
 	var findings []Finding
 	for _, rule := range allRules {
+		if r.Environment == "development" && devSkipRules[rule.name] {
+			continue
+		}
 		result, err := rule.fn(ctx, r.Client, r.Namespace)
 		if err != nil {
 			return nil, fmt.Errorf("rule %q failed: %w", rule.name, err)
 		}
 		findings = append(findings, result...)
 	}
-	ApplyScores(findings)
+	ApplyScores(findings, r.Environment)
 	return findings, nil
 }
