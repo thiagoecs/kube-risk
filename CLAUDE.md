@@ -10,8 +10,11 @@ A Go CLI tool that connects to a Kubernetes cluster via kubeconfig, runs a set o
 # Build
 go build -o kube-risk.exe .
 
-# Run against the local test cluster
+# Run against the local test cluster (production mode — default)
 go run . analyze -n risky-apps
+
+# Run in development mode (skips single-replica and missing-pdb)
+go run . analyze -n risky-apps -e development
 
 # Run against all namespaces
 go run . analyze
@@ -54,8 +57,8 @@ internal/
     types.go                     — Finding (includes Score int), Severity types
     runner.go                    — RunAll() → runs rules → calls ApplyScores()
     scoring.go                   — base scores per rule:severity, namespace boost, ApplyScores()
-    single_replica.go            — Deployment/StatefulSet with replicas <= 1 (HIGH, score 9)
-    missing_pdb.go               — no matching PodDisruptionBudget (MEDIUM, score 5)
+    single_replica.go            — Deployment/StatefulSet with replicas <= 1 (HIGH, score 9) [prod only]
+    missing_pdb.go               — no matching PodDisruptionBudget (MEDIUM, score 5) [prod only]
     missing_readiness_probe.go   — container missing readinessProbe (HIGH, score 7)
     unsafe_rollout.go            — maxUnavailable >= 50% of replicas (MEDIUM, score 4)
     risky_statefulset.go         — OnDelete (HIGH, score 8) or Parallel (MEDIUM, score 4)
@@ -82,6 +85,7 @@ test-cluster/
 - **Finding.Message must explain the risk in plain language.** Don't just say "missing PDB" — say what will happen during an upgrade and why it matters. This is the core product differentiator.
 - **One finding per workload per rule.** If multiple containers in a pod are missing a readiness probe, report the workload once (break after the first hit).
 - **Severity is intentional:** HIGH = can cause immediate downtime during a drain. MEDIUM = increases blast radius or reduces observability.
+- **`--environment` / `-e`** — `production` (default, all rules) or `development` (skips `single-replica` and `missing-pdb`). In dev mode the namespace boost is also skipped. The two skipped rules are intentional in dev — flagging them creates noise that trains operators to ignore the tool.
 - **Exit code 1 on any HIGH finding** — this makes the tool usable in CI pipelines.
 - **No mocks in rule code** — rules take a real `kubernetes.Interface`. If you need to test a rule in isolation, use `fake.NewSimpleClientset()` from `k8s.io/client-go/kubernetes/fake`.
 
