@@ -1,4 +1,6 @@
-# kube-risk — Claude Code guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this project is
 
@@ -9,6 +11,9 @@ A Go CLI tool that connects to a Kubernetes cluster via kubeconfig, runs a set o
 ```bash
 # Build
 go build -o kube-risk.exe .
+
+# Verify all packages compile (run after every change)
+go build ./...
 
 # Run against the local test cluster (production mode — default)
 go run . analyze -n risky-apps
@@ -23,7 +28,15 @@ go run . analyze
 go run . analyze --kubeconfig ~/.kube/my-cluster.yaml
 ```
 
-After any code change, always verify with `go build ./...` before considering the task done.
+## Tests
+
+No automated tests yet. When adding them, use `fake.NewSimpleClientset()` from `k8s.io/client-go/kubernetes/fake` to construct an in-memory Kubernetes client — do not mock at the rule function level.
+
+```bash
+go test ./...                        # run all tests
+go test ./internal/rules/...         # run rule tests only
+go test ./internal/rules/... -run TestCheckSingleReplica  # run a single test
+```
 
 ## Test cluster (kind)
 
@@ -42,7 +55,27 @@ risky-apps            # test namespace
 
 The test cluster has two test namespaces:
 - `risky-apps` — 5 workloads: `no-resilience`, `bad-rollout`, `on-delete-db`, `parallel-statefulset` (all intentionally broken), and `well-configured` (should always produce zero findings).
-- `production` — 1 workload: `single-in-prod`, created during V2 testing to verify the namespace boost (+2 score for prod namespaces). Will appear in all-namespace scans.
+- `production` — 1 workload: `single-in-prod`, created to verify the namespace score boost (+2 for prod namespaces). Will appear in all-namespace scans.
+
+GitHub CLI (`gh`) is installed but not on PATH. Full path: `C:/Program Files/GitHub CLI/gh.exe`.
+
+## Architecture
+
+The analysis pipeline is linear:
+
+```
+cmd/analyze.go
+  → rules.Runner.RunAll()         — filters rules by environment, runs each in parallel-safe serial loop
+    → each Check*() function      — queries Kubernetes API, returns []Finding
+  → rules.ApplyScores()           — adds numeric score (1–10) to each finding based on rule+severity+namespace
+  → report.Print()                — sorts, renders findings list, workload summary, and "Fix this first"
+```
+
+Key data type: `rules.Finding` — everything flows through this struct. Fields: `Namespace`, `Name`, `Kind`, `Rule`, `Severity`, `Score`, `Message`, `Fix`.
+
+`Score` is computed after all rules run (not inside the rule itself) so that `ApplyScores` can apply cross-cutting concerns like namespace environment boost without coupling that logic to individual rules.
+
+`Fix` is a copy-pasteable string (kubectl command or YAML). It is only set when the correct fix can be derived mechanically from the workload spec. Rules that require app-specific knowledge (`missing-readiness-probe`, `risky-statefulset`) leave it empty intentionally.
 
 ## Project layout
 
@@ -50,14 +83,14 @@ The test cluster has two test namespaces:
 main.go                          — entry point, calls cmd.Execute()
 cmd/
   root.go                        — root Cobra command
-  analyze.go                     — "kube-risk analyze" (flags: --kubeconfig, -n)
+  analyze.go                     — "kube-risk analyze" (flags: --kubeconfig, -n, -e)
 internal/
   k8s/client.go                  — builds kubernetes.Interface from kubeconfig
   rules/
-    types.go                     — Finding (includes Score int), Severity types
-    runner.go                    — RunAll() → runs rules → calls ApplyScores()
-    scoring.go                   — base scores per rule:severity, namespace boost, ApplyScores()
-    single_replica.go            — Deployment/StatefulSet with replicas <= 1 (HIGH, score 9) [prod only]
+    types.go                     — Finding, Severity types
+    runner.go                    — RunAll(), devSkipRules, calls ApplyScores()
+    scoring.go                   — baseScores map, namespaceBoost(), ApplyScores()
+    single_replica.go            — replicas <= 1 (HIGH, score 9) [prod only]
     missing_pdb.go               — no matching PodDisruptionBudget (MEDIUM, score 5) [prod only]
     missing_readiness_probe.go   — container missing readinessProbe (HIGH, score 7)
     unsafe_rollout.go            — maxUnavailable >= 50% of replicas (MEDIUM, score 4)
@@ -69,25 +102,25 @@ test-cluster/
 
 ## Adding a new rule
 
-1. Create `internal/rules/your_rule_name.go` with a function matching this signature:
+1. Create `internal/rules/your_rule_name.go`:
    ```go
    func CheckYourRule(ctx context.Context, client kubernetes.Interface, namespace string) ([]Finding, error)
    ```
 2. Register it in `internal/rules/runner.go` inside the `allRules` slice.
-3. Add a base score entry to the `baseScores` map in `internal/rules/scoring.go` using the key `"rule-id:SEVERITY"`. Without an entry it falls back to 7/4/2 by severity.
+3. Add a base score entry to `baseScores` in `internal/rules/scoring.go` using key `"rule-id:SEVERITY"`. Falls back to 7/4/2 by severity if absent.
 4. Add an entry to `whyItMatters()` in `internal/report/printer.go` for the "Fix this first" rationale.
-5. Only set `Finding.Fix` if the correct fix is unambiguous and safe to generate — commands or YAML where the values can be derived mechanically from the workload spec. Leave it empty if the fix requires knowledge of the app (ports, clustering, startup behaviour).
+5. Only set `Finding.Fix` if the correct fix is unambiguous and derivable from the workload spec. Leave empty if it requires app-specific knowledge.
 6. Add a test workload to `test-cluster/broken-workloads.yaml` that triggers it.
-7. Run `go build ./...` and `go run . analyze -n risky-apps` to confirm.
+7. If the rule should be skipped in development mode, add its name to `devSkipRules` in `runner.go`.
+8. Run `go build ./...` and `go run . analyze -n risky-apps` to confirm.
 
 ## Key conventions
 
 - **Finding.Message must explain the risk in plain language.** Don't just say "missing PDB" — say what will happen during an upgrade and why it matters. This is the core product differentiator.
 - **One finding per workload per rule.** If multiple containers in a pod are missing a readiness probe, report the workload once (break after the first hit).
 - **Severity is intentional:** HIGH = can cause immediate downtime during a drain. MEDIUM = increases blast radius or reduces observability.
-- **`--environment` / `-e`** — `production` (default, all rules) or `development` (skips `single-replica` and `missing-pdb`). In dev mode the namespace boost is also skipped. The two skipped rules are intentional in dev — flagging them creates noise that trains operators to ignore the tool.
-- **Exit code 1 on any HIGH finding** — this makes the tool usable in CI pipelines.
-- **No mocks in rule code** — rules take a real `kubernetes.Interface`. If you need to test a rule in isolation, use `fake.NewSimpleClientset()` from `k8s.io/client-go/kubernetes/fake`.
+- **`--environment` / `-e`** — `production` (default, all rules) or `development` (skips `single-replica` and `missing-pdb`, no namespace boost). The skipped rules are intentional in dev — flagging them trains operators to ignore the tool.
+- **Exit code 1 on any HIGH finding** — makes the tool usable as a CI gate.
 
 ## Roadmap (don't implement ahead of the current phase)
 
