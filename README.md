@@ -26,9 +26,14 @@ kube-risk reads the live cluster state via kubeconfig, explains *why* each findi
 |------|----------|-----------------|-------------|
 | `single-replica` | HIGH | Deployments/StatefulSets with 1 replica — guaranteed downtime during node drain | production only |
 | `missing-readiness-probe` | HIGH | Containers without a readiness probe — traffic hits the pod before the app is ready | all |
+| `missing-liveness-probe` | HIGH | Containers without a liveness probe — stuck pods are never restarted automatically | all |
+| `hpa-min-replicas` | HIGH | HPA with `minReplicas=1` — silently defeats replica count and PDB protections | all |
 | `risky-statefulset` | HIGH/MEDIUM | `OnDelete` update strategy or `Parallel` pod management | all |
 | `missing-pdb` | MEDIUM | No PodDisruptionBudget — Kubernetes can evict all pods simultaneously | production only |
 | `unsafe-rollout` | MEDIUM | `maxUnavailable` ≥ 50% of replicas — too much capacity offline during updates | all |
+| `missing-resources` | MEDIUM | Containers without CPU/memory requests or limits — node pressure causes evictions | all |
+| `latest-image-tag` | MEDIUM | Containers using `:latest` or no tag — non-deterministic deploys, hard to roll back | all |
+| `daemonset-update-strategy` | MEDIUM | DaemonSet using `OnDelete` — node agents never update automatically | all |
 
 ---
 
@@ -37,7 +42,7 @@ kube-risk reads the live cluster state via kubeconfig, explains *why* each findi
 **Download a pre-built binary:**
 
 ```bash
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.5.0/kube-risk-linux-amd64 \
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/kube-risk-linux-amd64 \
   -o /usr/local/bin/kube-risk
 chmod +x /usr/local/bin/kube-risk
 ```
@@ -138,16 +143,16 @@ kube-risk only needs to read your cluster — it never modifies it. Create a min
 
 ```bash
 # Install the read-only service account (one-time setup)
-kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.5.0/rbac.yaml
+kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/rbac.yaml
 
 # Generate a minimal kubeconfig and copy the output
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.5.0/get-kubeconfig.sh | bash
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/get-kubeconfig.sh | bash
 ```
 
 The service account has exactly three permissions: `list deployments`, `list statefulsets`, `list poddisruptionbudgets`. Nothing else — it cannot read secrets, exec into pods, or modify anything.
 
 ```yaml
-- uses: thiagoecs/kube-risk@v0.5.0
+- uses: thiagoecs/kube-risk@v0.6.0
   with:
     kubeconfig: ${{ secrets.KUBECONFIG }}
     github-token: ${{ secrets.GITHUB_TOKEN }}
