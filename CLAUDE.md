@@ -162,10 +162,13 @@ The action downloads the pre-built `linux/amd64` binary from the GitHub release 
 
 ## Roadmap (don't implement ahead of the current phase)
 
+The end goal is to ensure applications running on Kubernetes are truly cloud native — treating infrastructure as cattle, not pets. Any node can die at any time and the app should not care.
+
 | Version | Focus |
 |---------|-------|
 | V1 | CLI + 5 rules + report — **done** |
 | V2 | Risk scoring, prioritization, environment awareness — **done** |
 | V3 | Specific fix recommendations per finding — **done** |
 | V4 | GitHub PR generation with YAML fixes + GitHub Action — **done** |
-| V5 | LLM layer that reads repo and adapts to team conventions |
+| V5 | LLM layer that reads repo and adapts fixes to team conventions (readiness probes, StatefulSet configs) |
+| V6 | Upgrade validation: drain a node, inject synthetic traffic, verify zero downtime — proves the fix actually holds under real conditions |
