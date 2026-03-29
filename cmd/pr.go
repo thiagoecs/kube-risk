@@ -106,11 +106,6 @@ func runPR(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if len(fixable) == 0 {
-		fmt.Println("No fixable findings — nothing to open PRs for.")
-		return nil
-	}
-
 	// Group fixable findings by workload so we open one PR per file.
 	groups := make(map[workloadKey][]rules.Finding)
 	var order []workloadKey // preserve deterministic output order
@@ -120,6 +115,31 @@ func runPR(cmd *cobra.Command, args []string) error {
 			order = append(order, key)
 		}
 		groups[key] = append(groups[key], f)
+	}
+
+	// Collect workloads that have findings but no fixable ones — these will
+	// be printed as a "skipped" summary so operators know we saw them.
+	fixableWorkloads := make(map[workloadKey]bool, len(groups))
+	for key := range groups {
+		fixableWorkloads[key] = true
+	}
+	unfixable := make(map[workloadKey][]rules.Finding)
+	var unfixableOrder []workloadKey
+	for _, f := range findings {
+		key := workloadKey{f.Namespace, f.Name}
+		if fixableWorkloads[key] {
+			continue
+		}
+		if _, seen := unfixable[key]; !seen {
+			unfixableOrder = append(unfixableOrder, key)
+		}
+		unfixable[key] = append(unfixable[key], f)
+	}
+
+	if len(fixable) == 0 {
+		fmt.Println("No fixable findings — nothing to open PRs for.")
+		printSkipped(unfixableOrder, unfixable)
+		return nil
 	}
 
 	gh := github.New(token, flagPRRepo)
@@ -133,7 +153,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagDryRun {
-		return runDryRun(groups, order, pathMap)
+		return runDryRun(groups, order, pathMap, unfixableOrder, unfixable)
 	}
 
 	defaultBranch, err := gh.DefaultBranch()
@@ -160,6 +180,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "\n%d PR(s) opened.\n", prCount)
+	printSkipped(unfixableOrder, unfixable)
 	return nil
 }
 
@@ -189,10 +210,9 @@ func buildPathMap(gh *github.Client, groups map[workloadKey][]rules.Finding, tok
 }
 
 // runDryRun prints what kube-risk pr would do without touching GitHub.
-func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, pathMap map[string]string) error {
+func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, pathMap map[string]string, unfixableOrder []workloadKey, unfixable map[workloadKey][]rules.Finding) error {
 	fmt.Println("DRY RUN — no branches or PRs will be created")
 	fmt.Println()
-	skipped := 0
 	for _, key := range order {
 		filePath, ok := pathMap[key.namespace+"/"+key.name]
 		findings := groups[key]
@@ -218,9 +238,9 @@ func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, path
 			}
 		}
 		fmt.Println()
-		_ = skipped
 	}
 	fmt.Printf("%d PR(s) would be opened.\n", len(order))
+	printSkipped(unfixableOrder, unfixable)
 	return nil
 }
 
@@ -299,6 +319,28 @@ func pdbFilePathFromResolved(resolvedPath, name string) string {
 		return resolvedPath[:i] + "/" + name + "-pdb.yaml"
 	}
 	return name + "-pdb.yaml"
+}
+
+// printSkipped prints workloads that had findings but no auto-fix available.
+func printSkipped(order []workloadKey, groups map[workloadKey][]rules.Finding) {
+	if len(order) == 0 {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "\nSkipped — no auto-fix available:\n")
+	for _, key := range order {
+		findings := groups[key]
+		rules := make([]string, 0, len(findings))
+		seen := make(map[string]bool)
+		for _, f := range findings {
+			if !seen[f.Rule] {
+				rules = append(rules, f.Rule)
+				seen[f.Rule] = true
+			}
+		}
+		fmt.Fprintf(os.Stderr, "  %s/%s (%s)   %s\n",
+			key.namespace, key.name, findings[0].Kind, strings.Join(rules, ", "))
+	}
+	fmt.Fprintf(os.Stderr, "Run 'kube-risk analyze' for full details on these findings.\n")
 }
 
 // buildPRBody produces the pull request description listing all findings being fixed.
