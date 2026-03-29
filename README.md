@@ -37,7 +37,7 @@ kube-risk reads the live cluster state via kubeconfig, explains *why* each findi
 **Download a pre-built binary:**
 
 ```bash
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.4.0/kube-risk-linux-amd64 \
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.5.0/kube-risk-linux-amd64 \
   -o /usr/local/bin/kube-risk
 chmod +x /usr/local/bin/kube-risk
 ```
