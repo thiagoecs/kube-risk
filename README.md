@@ -107,7 +107,17 @@ One PR is opened per workload with fixable findings. The PR description explains
 
 **Fixable automatically:** `single-replica`, `unsafe-rollout`, `missing-pdb`
 
-**Require manual fix:** `missing-readiness-probe`, `risky-statefulset` — these depend on app-specific knowledge (health check port, ordering guarantees). LLM-assisted fixes are planned for V5.
+**Require manual fix:** `missing-readiness-probe`, `risky-statefulset` — these depend on app-specific knowledge (health check port, ordering guarantees). LLM-assisted fixes are planned for V6.
+
+### Manifest format support
+
+| Format | `analyze` | Auto-fix PRs |
+|--------|-----------|--------------|
+| Raw YAML | ✓ | ✓ |
+| Kustomize | ✓ | ✗ (planned) |
+| Helm | ✓ | ✗ (planned) |
+
+`analyze` works for all formats because it reads the live cluster directly. Auto-fix PRs currently require raw YAML files in the repo — kube-risk needs a file to patch. Helm and Kustomize support is planned: Helm requires patching `values.yaml`, Kustomize requires patching the right overlay. Both are on the roadmap.
 
 ---
 
