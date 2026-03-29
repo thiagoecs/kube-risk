@@ -18,7 +18,7 @@ func TestRunnerDevModeFiltering(t *testing.T) {
 		client := fake.NewSimpleClientset(d)
 		runner := &Runner{Client: client, Namespace: "default", Environment: "production"}
 
-		findings, err := runner.RunAll(ctx)
+		findings, _, err := runner.RunAll(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,7 +38,7 @@ func TestRunnerDevModeFiltering(t *testing.T) {
 		client := fake.NewSimpleClientset(d)
 		runner := &Runner{Client: client, Namespace: "default", Environment: "development"}
 
-		findings, err := runner.RunAll(ctx)
+		findings, _, err := runner.RunAll(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,7 +58,7 @@ func TestRunnerDevModeFiltering(t *testing.T) {
 		client := fake.NewSimpleClientset(d)
 		runner := &Runner{Client: client, Namespace: "default", Environment: "production"}
 
-		findings, err := runner.RunAll(ctx)
+		findings, _, err := runner.RunAll(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestRunnerDevModeFiltering(t *testing.T) {
 		client := fake.NewSimpleClientset(ss)
 		runner := &Runner{Client: client, Namespace: "default", Environment: "development"}
 
-		findings, err := runner.RunAll(ctx)
+		findings, _, err := runner.RunAll(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}

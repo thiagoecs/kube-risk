@@ -93,9 +93,12 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, " [%s]\n", flagEnvironment)
 
-	findings, err := runner.RunAll(context.Background())
+	findings, suppressed, err := runner.RunAll(context.Background())
 	if err != nil {
 		return err
+	}
+	if suppressed > 0 {
+		fmt.Fprintf(os.Stderr, "%d finding(s) suppressed via kube-risk/suppress annotation.\n", suppressed)
 	}
 
 	// Filter to findings that have a mechanically-derivable fix.

@@ -24,8 +24,9 @@ var devSkipRules = map[string]bool{
 	"missing-pdb":    true,
 }
 
-// RunAll executes every registered rule and aggregates the findings.
-func (r *Runner) RunAll(ctx context.Context) ([]Finding, error) {
+// RunAll executes every registered rule, filters suppressed findings, and
+// returns the active findings plus the count of suppressed ones.
+func (r *Runner) RunAll(ctx context.Context) ([]Finding, int, error) {
 	allRules := []struct {
 		name string
 		fn   func(context.Context, kubernetes.Interface, string) ([]Finding, error)
@@ -49,10 +50,11 @@ func (r *Runner) RunAll(ctx context.Context) ([]Finding, error) {
 		}
 		result, err := rule.fn(ctx, r.Client, r.Namespace)
 		if err != nil {
-			return nil, fmt.Errorf("rule %q failed: %w", rule.name, err)
+			return nil, 0, fmt.Errorf("rule %q failed: %w", rule.name, err)
 		}
 		findings = append(findings, result...)
 	}
+	findings, suppressed := filterSuppressed(ctx, r.Client, findings)
 	ApplyScores(findings, r.Environment)
-	return findings, nil
+	return findings, suppressed, nil
 }

@@ -36,11 +36,17 @@ spec:
 
 ---
 # ── 2. Triggers: unsafe-rollout (maxUnavailable=100%) ────────
+# unsafe-rollout is suppressed here to demonstrate the annotation.
+# In a real scenario a team might accept this risk for a batch job
+# that deploys infrequently and can tolerate brief downtime.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: bad-rollout
   namespace: risky-apps
+  annotations:
+    kube-risk/suppress: "unsafe-rollout"
+    kube-risk/suppress-reason: "batch job — brief downtime during deploys is acceptable"
 spec:
   replicas: 4
   selector:

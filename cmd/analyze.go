@@ -55,12 +55,16 @@ Rules checked:
 		}
 		fmt.Fprintf(os.Stderr, " [%s]\n", flagEnvironment)
 
-		findings, err := runner.RunAll(context.Background())
+		findings, suppressed, err := runner.RunAll(context.Background())
 		if err != nil {
 			return err
 		}
 
 		report.Print(os.Stdout, findings, report.Options{Environment: flagEnvironment})
+
+		if suppressed > 0 {
+			fmt.Fprintf(os.Stdout, "\n%d finding(s) suppressed via %s annotation.\n", suppressed, "kube-risk/suppress")
+		}
 
 		// Exit code 1 if any HIGH findings — useful in CI pipelines
 		for _, f := range findings {
