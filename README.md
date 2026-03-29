@@ -123,12 +123,11 @@ Copy [`examples/kube-risk-action.yml`](examples/kube-risk-action.yml) to `.githu
 | `GITHUB_TOKEN` | Provided automatically by GitHub — no setup needed |
 
 ```yaml
-- uses: thiagoecs/kube-risk@v0.4.0
+- uses: thiagoecs/kube-risk@v0.5.0
   with:
     kubeconfig: ${{ secrets.KUBECONFIG }}
     github-token: ${{ secrets.GITHUB_TOKEN }}
     repo: ${{ github.repository }}
-    path-template: manifests/{namespace}/{name}.yaml
     namespace: production
     environment: production
 ```
