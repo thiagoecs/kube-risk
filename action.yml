@@ -17,8 +17,9 @@ inputs:
     description: "Repository containing the manifests, e.g. owner/repo"
     required: true
   path-template:
-    description: "Path template to locate manifests, e.g. manifests/{namespace}/{name}.yaml"
-    required: true
+    description: "Path template to locate manifests, e.g. manifests/{namespace}/{name}.yaml (optional — auto-discovered if omitted)"
+    required: false
+    default: ''
   namespace:
     description: "Kubernetes namespace to scan (default: all namespaces)"
     required: false
@@ -59,9 +60,11 @@ runs:
       run: |
         args=(pr
           --repo "${{ inputs.repo }}"
-          --path-template "${{ inputs.path-template }}"
           -e "${{ inputs.environment }}"
         )
+        if [[ -n "${{ inputs.path-template }}" ]]; then
+          args+=(--path-template "${{ inputs.path-template }}")
+        fi
         if [[ -n "${{ inputs.namespace }}" ]]; then
           args+=(-n "${{ inputs.namespace }}")
         fi

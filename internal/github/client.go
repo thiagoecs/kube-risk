@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const apiBase = "https://api.github.com"
@@ -113,6 +115,70 @@ func (c *Client) CreatePR(title, body, head, base string) (string, error) {
 		return "", err
 	}
 	return resp.HTMLURL, nil
+}
+
+// DiscoverManifests scans every .yaml/.yml file in the repo and returns a map
+// of "namespace/name" → file path for any Kubernetes workload manifests found.
+// Supports multi-document YAML files (separated by ---).
+// Falls back to namespace "default" when the manifest has no namespace field.
+func (c *Client) DiscoverManifests() (map[string]string, error) {
+	// Fetch the full file tree recursively.
+	var tree struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+	}
+	if err := c.get(fmt.Sprintf("/repos/%s/git/trees/HEAD?recursive=1", c.repo), &tree); err != nil {
+		return nil, fmt.Errorf("listing repo tree: %w", err)
+	}
+
+	workloadKinds := map[string]bool{
+		"Deployment":  true,
+		"StatefulSet": true,
+		"DaemonSet":   true,
+	}
+
+	result := make(map[string]string)
+
+	for _, entry := range tree.Tree {
+		if entry.Type != "blob" {
+			continue
+		}
+		if !strings.HasSuffix(entry.Path, ".yaml") && !strings.HasSuffix(entry.Path, ".yml") {
+			continue
+		}
+
+		file, err := c.GetFile(entry.Path)
+		if err != nil {
+			continue // skip files we can't read
+		}
+
+		// Parse all documents in the file (handles multi-doc YAML).
+		decoder := yaml.NewDecoder(strings.NewReader(string(file.Content)))
+		for {
+			var doc struct {
+				Kind     string `yaml:"kind"`
+				Metadata struct {
+					Name      string `yaml:"name"`
+					Namespace string `yaml:"namespace"`
+				} `yaml:"metadata"`
+			}
+			if err := decoder.Decode(&doc); err != nil {
+				break // EOF or parse error — move to next file
+			}
+			if !workloadKinds[doc.Kind] || doc.Metadata.Name == "" {
+				continue
+			}
+			ns := doc.Metadata.Namespace
+			if ns == "" {
+				ns = "default"
+			}
+			result[ns+"/"+doc.Metadata.Name] = entry.Path
+		}
+	}
+
+	return result, nil
 }
 
 // -- HTTP helpers --

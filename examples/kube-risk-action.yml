@@ -31,6 +31,6 @@ jobs:
           kubeconfig: ${{ secrets.KUBECONFIG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}
-          path-template: manifests/{namespace}/{name}.yaml
+          # path-template: manifests/{namespace}/{name}.yaml  # optional — auto-discovered if omitted
           namespace: production        # remove this line to scan all namespaces
           environment: production

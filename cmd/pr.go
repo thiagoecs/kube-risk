@@ -51,14 +51,13 @@ func init() {
 	prCmd.Flags().StringVar(&flagPRRepo, "repo", "",
 		`GitHub repository containing the manifests, e.g. "owner/repo" (required)`)
 	prCmd.Flags().StringVar(&flagPathTemplate, "path-template", "",
-		`Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml" (required)`)
+		`Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml" (optional — auto-discovered if omitted)`)
 	prCmd.Flags().StringVar(&flagGitHubToken, "token", "",
 		"GitHub personal access token (default: $GITHUB_TOKEN)")
 	prCmd.Flags().BoolVar(&flagDryRun, "dry-run", false,
 		"Print what would be done without creating branches or PRs (no token required)")
 
 	_ = prCmd.MarkFlagRequired("repo")
-	_ = prCmd.MarkFlagRequired("path-template")
 }
 
 func runPR(cmd *cobra.Command, args []string) error {
@@ -123,11 +122,19 @@ func runPR(cmd *cobra.Command, args []string) error {
 		groups[key] = append(groups[key], f)
 	}
 
-	if flagDryRun {
-		return runDryRun(groups, order)
+	gh := github.New(token, flagPRRepo)
+
+	// Build namespace/name → file path map.
+	// Use --path-template if provided; otherwise auto-discover from the repo.
+	// In dry-run mode with no token, skip discovery and show generic paths.
+	pathMap, err := buildPathMap(gh, groups, token)
+	if err != nil {
+		return err
 	}
 
-	gh := github.New(token, flagPRRepo)
+	if flagDryRun {
+		return runDryRun(groups, order, pathMap)
+	}
 
 	defaultBranch, err := gh.DefaultBranch()
 	if err != nil {
@@ -136,8 +143,13 @@ func runPR(cmd *cobra.Command, args []string) error {
 
 	prCount := 0
 	for _, key := range order {
+		filePath, ok := pathMap[key.namespace+"/"+key.name]
+		if !ok {
+			fmt.Fprintf(os.Stderr, "  Skipping %s/%s — manifest not found in repo\n", key.namespace, key.name)
+			continue
+		}
 		fmt.Fprintf(os.Stderr, "  Opening PR for %s/%s ... ", key.namespace, key.name)
-		url, err := openWorkloadPR(gh, key.namespace, key.name, groups[key], defaultBranch)
+		url, err := openWorkloadPR(gh, key.namespace, key.name, groups[key], defaultBranch, filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 			continue
@@ -151,27 +163,62 @@ func runPR(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// buildPathMap returns a map of "namespace/name" → file path.
+// If --path-template is set, it builds the map from the template.
+// Otherwise it auto-discovers manifests by scanning the repo.
+// If no token is available (dry-run without credentials), returns an empty map.
+func buildPathMap(gh *github.Client, groups map[workloadKey][]rules.Finding, token string) (map[string]string, error) {
+	if flagPathTemplate != "" {
+		m := make(map[string]string, len(groups))
+		for key := range groups {
+			m[key.namespace+"/"+key.name] = resolvePath(flagPathTemplate, key.namespace, key.name)
+		}
+		return m, nil
+	}
+	if token == "" {
+		// No token — can't scan repo. Dry-run will show workloads without file paths.
+		return make(map[string]string), nil
+	}
+	fmt.Fprintf(os.Stderr, "No --path-template provided — scanning repo for manifests...\n")
+	m, err := gh.DiscoverManifests()
+	if err != nil {
+		return nil, fmt.Errorf("discovering manifests: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "Found %d manifest(s) in repo.\n", len(m))
+	return m, nil
+}
+
 // runDryRun prints what kube-risk pr would do without touching GitHub.
-func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey) error {
+func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, pathMap map[string]string) error {
 	fmt.Println("DRY RUN — no branches or PRs will be created")
 	fmt.Println()
+	skipped := 0
 	for _, key := range order {
+		filePath, ok := pathMap[key.namespace+"/"+key.name]
 		findings := groups[key]
 		fmt.Printf("  Would open PR for %s/%s  (branch: kube-risk/fix-%s-%s)\n",
 			key.namespace, key.name, key.namespace, key.name)
 
 		for _, f := range findings {
-			filePath := resolvePath(flagPathTemplate, key.namespace, key.name)
+			path := filePath
+			if !ok {
+				path = fmt.Sprintf("<manifest for %s/%s>", key.namespace, key.name)
+			}
 			switch f.Rule {
 			case "single-replica":
-				fmt.Printf("    patch  %s  →  spec.replicas: 2\n", filePath)
+				fmt.Printf("    patch  %s  →  spec.replicas: 2\n", path)
 			case "unsafe-rollout":
-				fmt.Printf("    patch  %s  →  spec.strategy.rollingUpdate.maxUnavailable: 1\n", filePath)
+				fmt.Printf("    patch  %s  →  spec.strategy.rollingUpdate.maxUnavailable: 1\n", path)
 			case "missing-pdb":
-				fmt.Printf("    create %s\n", pdbFilePath(flagPathTemplate, key.namespace, key.name))
+				if ok {
+					fmt.Printf("    create %s\n", pdbFilePathFromResolved(filePath, key.name))
+				} else {
+					fmt.Printf("    create <pdb for %s/%s>\n", key.namespace, key.name)
+				}
 			}
 		}
 		fmt.Println()
+		_ = skipped
 	}
 	fmt.Printf("%d PR(s) would be opened.\n", len(order))
 	return nil
@@ -179,8 +226,7 @@ func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey) erro
 
 // openWorkloadPR creates a branch, commits the patched file (and PDB file if
 // needed), then opens a pull request. Returns the PR URL.
-func openWorkloadPR(gh *github.Client, namespace, name string, findings []rules.Finding, defaultBranch string) (string, error) {
-	filePath := resolvePath(flagPathTemplate, namespace, name)
+func openWorkloadPR(gh *github.Client, namespace, name string, findings []rules.Finding, defaultBranch, filePath string) (string, error) {
 	branchName := fmt.Sprintf("kube-risk/fix-%s-%s", namespace, name)
 
 	repoFile, err := gh.GetFile(filePath)
@@ -221,7 +267,7 @@ func openWorkloadPR(gh *github.Client, namespace, name string, findings []rules.
 	}
 
 	if pdbFinding != nil {
-		pdbPath := pdbFilePath(flagPathTemplate, namespace, name)
+		pdbPath := pdbFilePathFromResolved(filePath, name)
 		pdbContent := []byte(patcher.ExtractPDBYAML(pdbFinding.Fix))
 		if err := gh.PutFile(pdbPath, branchName, "fix: add PDB for "+name+" in "+namespace, pdbContent, ""); err != nil {
 			return "", fmt.Errorf("committing PDB %s: %w", pdbPath, err)
@@ -246,12 +292,11 @@ func resolvePath(template, namespace, name string) string {
 	return strings.ReplaceAll(s, "{name}", name)
 }
 
-// pdbFilePath returns the path for a new PDB manifest in the same directory
-// as the workload file, named "{name}-pdb.yaml".
-func pdbFilePath(template, namespace, name string) string {
-	resolved := resolvePath(template, namespace, name)
-	if i := strings.LastIndex(resolved, "/"); i >= 0 {
-		return resolved[:i] + "/" + name + "-pdb.yaml"
+// pdbFilePathFromResolved returns the path for a new PDB manifest in the same
+// directory as the resolved workload file path, named "{name}-pdb.yaml".
+func pdbFilePathFromResolved(resolvedPath, name string) string {
+	if i := strings.LastIndex(resolvedPath, "/"); i >= 0 {
+		return resolvedPath[:i] + "/" + name + "-pdb.yaml"
 	}
 	return name + "-pdb.yaml"
 }

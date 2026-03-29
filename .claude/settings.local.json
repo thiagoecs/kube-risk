@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk-sample-app/contents/manifests/production/database.yaml --jq '.content')",
+      "Bash(go build:*)",
+      "Bash(kubectl get:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk-sample-app/contents/manifests/production/backend.yaml --jq '.content')",
+      "Bash(kubectl apply:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk-sample-app/contents/manifests/production/frontend.yaml --jq '.content')",
+      "Bash(go run:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr diff 1 --repo thiagoecs/kube-risk-sample-app 2>&1)",
+      "Bash(go test:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr merge 4 --repo thiagoecs/kube-risk-sample-app --squash --delete-branch)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr merge 5 --repo thiagoecs/kube-risk-sample-app --squash --delete-branch)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr merge 6 --repo thiagoecs/kube-risk-sample-app --squash --delete-branch)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" pr list --repo thiagoecs/kube-risk-sample-app --state merged 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" release delete v0.4.0 --repo thiagoecs/kube-risk --yes)",
+      "Bash(git -C \"C:/kube project\" push origin :refs/tags/v0.4.0)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" release list --repo thiagoecs/kube-risk 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk/tags --jq '.[].name' 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api --method DELETE repos/thiagoecs/kube-risk/git/refs/tags/v0.4.0)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" release create v0.4.0 kube-risk-linux-amd64 --repo thiagoecs/kube-risk --title \"v0.4.0\" --notes \"## V4: GitHub PR generation + GitHub Action:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk/contents/action.yml?ref=v0.4.0 --jq '.name' 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" api repos/thiagoecs/kube-risk --jq '.private' 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" repo edit thiagoecs/kube-risk --visibility public --accept-visibility-change-consequences 2>&1)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" run watch 23704707488 --repo thiagoecs/kube-risk-sample-app --exit-status)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" workflow run kube-risk.yml --repo thiagoecs/kube-risk-sample-app 2>&1)",
+      "Bash(az account:*)",
+      "Bash(az group:*)"
+    ]
+  }
+}
