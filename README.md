@@ -42,7 +42,7 @@ kube-risk reads the live cluster state via kubeconfig, explains *why* each findi
 **Download a pre-built binary:**
 
 ```bash
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/kube-risk-linux-amd64 \
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.7.0/kube-risk-linux-amd64 \
   -o /usr/local/bin/kube-risk
 chmod +x /usr/local/bin/kube-risk
 ```
@@ -108,11 +108,11 @@ kube-risk pr \
   -n production
 ```
 
-One PR is opened per workload with fixable findings. The PR description explains every finding — including non-fixable ones that require manual attention.
+One PR is opened per workload with fixable findings. For workloads where every finding requires manual attention, a **GitHub Issue** is opened instead — so nothing gets silently dropped.
 
-**Fixable automatically:** `single-replica`, `unsafe-rollout`, `missing-pdb`
+**Fixable automatically (PR):** `single-replica`, `unsafe-rollout`, `missing-pdb`
 
-**Require manual fix:** `missing-readiness-probe`, `risky-statefulset` — these depend on app-specific knowledge (health check port, ordering guarantees). LLM-assisted fixes are planned for V6.
+**Require manual fix (Issue):** `missing-readiness-probe`, `missing-liveness-probe`, `risky-statefulset`, `latest-image-tag`, `missing-resources`, `hpa-min-replicas`, `daemonset-update-strategy` — these depend on app-specific knowledge. LLM-assisted fixes are planned for a future version.
 
 ### Manifest format support
 
@@ -143,16 +143,16 @@ kube-risk only needs to read your cluster — it never modifies it. Create a min
 
 ```bash
 # Install the read-only service account (one-time setup)
-kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/rbac.yaml
+kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.7.0/rbac.yaml
 
 # Generate a minimal kubeconfig and copy the output
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.6.0/get-kubeconfig.sh | bash
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.7.0/get-kubeconfig.sh | bash
 ```
 
 The service account has exactly three permissions: `list deployments`, `list statefulsets`, `list poddisruptionbudgets`. Nothing else — it cannot read secrets, exec into pods, or modify anything.
 
 ```yaml
-- uses: thiagoecs/kube-risk@v0.6.0
+- uses: thiagoecs/kube-risk@v0.7.0
   with:
     kubeconfig: ${{ secrets.KUBECONFIG }}
     github-token: ${{ secrets.GITHUB_TOKEN }}
