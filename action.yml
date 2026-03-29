@@ -8,27 +8,27 @@ branding:
 
 inputs:
   kubeconfig:
-    description: Contents of your kubeconfig file (store as a GitHub secret)
+    description: "Contents of your kubeconfig file (store as a GitHub secret)"
     required: true
   github-token:
-    description: GitHub token with contents:write and pull-requests:write permissions
+    description: "GitHub token with contents:write and pull-requests:write permissions"
     required: true
   repo:
-    description: Repository containing the manifests, e.g. "owner/repo"
+    description: "Repository containing the manifests, e.g. owner/repo"
     required: true
   path-template:
-    description: Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml"
+    description: "Path template to locate manifests, e.g. manifests/{namespace}/{name}.yaml"
     required: true
   namespace:
-    description: Kubernetes namespace to scan (default: all namespaces)
+    description: "Kubernetes namespace to scan (default: all namespaces)"
     required: false
     default: ''
   environment:
-    description: Environment type — "production" (all rules) or "development" (skips scale rules)
+    description: "Environment type: production (all rules) or development (skips scale rules)"
     required: false
     default: production
   version:
-    description: kube-risk release version to use
+    description: "kube-risk release version to use"
     required: false
     default: v0.4.0
 
