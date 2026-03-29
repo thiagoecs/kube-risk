@@ -117,6 +117,22 @@ func (c *Client) CreatePR(title, body, head, base string) (string, error) {
 	return resp.HTMLURL, nil
 }
 
+// CreateIssue opens a GitHub issue and returns its HTML URL.
+func (c *Client) CreateIssue(title, body string, labels []string) (string, error) {
+	req := map[string]interface{}{
+		"title":  title,
+		"body":   body,
+		"labels": labels,
+	}
+	var resp struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if err := c.do("POST", fmt.Sprintf("/repos/%s/issues", c.repo), req, &resp); err != nil {
+		return "", err
+	}
+	return resp.HTMLURL, nil
+}
+
 // DiscoverManifests scans every .yaml/.yml file in the repo and returns a map
 // of "namespace/name" → file path for any Kubernetes workload manifests found.
 // Supports multi-document YAML files (separated by ---).

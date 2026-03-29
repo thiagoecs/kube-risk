@@ -136,13 +136,29 @@ func runPR(cmd *cobra.Command, args []string) error {
 		unfixable[key] = append(unfixable[key], f)
 	}
 
+	gh := github.New(token, flagPRRepo)
+
 	if len(fixable) == 0 {
 		fmt.Println("No fixable findings — nothing to open PRs for.")
-		printSkipped(unfixableOrder, unfixable)
+		if len(unfixableOrder) > 0 {
+			fmt.Fprintf(os.Stderr, "\nOpening issue(s) for findings with no auto-fix...\n")
+			for _, key := range unfixableOrder {
+				fmt.Fprintf(os.Stderr, "  Opening issue for %s/%s ... ", key.namespace, key.name)
+				url, err := gh.CreateIssue(
+					fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name),
+					buildIssueBody(key.namespace, key.name, unfixable[key]),
+					[]string{"kube-risk"},
+				)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+					continue
+				}
+				fmt.Fprintf(os.Stderr, "done\n")
+				fmt.Printf("%s\n", url)
+			}
+		}
 		return nil
 	}
-
-	gh := github.New(token, flagPRRepo)
 
 	// Build namespace/name → file path map.
 	// Use --path-template if provided; otherwise auto-discover from the repo.
@@ -180,7 +196,27 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "\n%d PR(s) opened.\n", prCount)
-	printSkipped(unfixableOrder, unfixable)
+
+	issueCount := 0
+	if len(unfixableOrder) > 0 {
+		fmt.Fprintf(os.Stderr, "\nOpening issue(s) for findings with no auto-fix...\n")
+		for _, key := range unfixableOrder {
+			fmt.Fprintf(os.Stderr, "  Opening issue for %s/%s ... ", key.namespace, key.name)
+			url, err := gh.CreateIssue(
+				fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name),
+				buildIssueBody(key.namespace, key.name, unfixable[key]),
+				[]string{"kube-risk"},
+			)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+				continue
+			}
+			fmt.Fprintf(os.Stderr, "done\n")
+			fmt.Printf("%s\n", url)
+			issueCount++
+		}
+		fmt.Fprintf(os.Stderr, "%d issue(s) opened.\n", issueCount)
+	}
 	return nil
 }
 
@@ -240,7 +276,20 @@ func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, path
 		fmt.Println()
 	}
 	fmt.Printf("%d PR(s) would be opened.\n", len(order))
-	printSkipped(unfixableOrder, unfixable)
+	if len(unfixableOrder) > 0 {
+		fmt.Printf("%d issue(s) would be opened for findings with no auto-fix:\n", len(unfixableOrder))
+		for _, key := range unfixableOrder {
+			ruleNames := make([]string, 0, len(unfixable[key]))
+			seen := make(map[string]bool)
+			for _, f := range unfixable[key] {
+				if !seen[f.Rule] {
+					ruleNames = append(ruleNames, f.Rule)
+					seen[f.Rule] = true
+				}
+			}
+			fmt.Printf("  %s/%s (%s)   %s\n", key.namespace, key.name, unfixable[key][0].Kind, strings.Join(ruleNames, ", "))
+		}
+	}
 	return nil
 }
 
@@ -321,26 +370,19 @@ func pdbFilePathFromResolved(resolvedPath, name string) string {
 	return name + "-pdb.yaml"
 }
 
-// printSkipped prints workloads that had findings but no auto-fix available.
-func printSkipped(order []workloadKey, groups map[workloadKey][]rules.Finding) {
-	if len(order) == 0 {
-		return
+// buildIssueBody produces the GitHub issue body for a workload with unfixable findings.
+func buildIssueBody(namespace, name string, findings []rules.Finding) string {
+	var sb strings.Builder
+	sb.WriteString("## kube-risk findings — manual attention required\n\n")
+	sb.WriteString(fmt.Sprintf("**Workload:** `%s/%s` (%s)\n\n", namespace, name, findings[0].Kind))
+	sb.WriteString("The following findings were detected but cannot be fixed automatically ")
+	sb.WriteString("because the correct fix requires app-specific knowledge:\n\n")
+	for _, f := range findings {
+		sb.WriteString(fmt.Sprintf("### `%s` — %s severity\n\n", f.Rule, f.Severity))
+		sb.WriteString(f.Message + "\n\n")
 	}
-	fmt.Fprintf(os.Stderr, "\nSkipped — no auto-fix available:\n")
-	for _, key := range order {
-		findings := groups[key]
-		rules := make([]string, 0, len(findings))
-		seen := make(map[string]bool)
-		for _, f := range findings {
-			if !seen[f.Rule] {
-				rules = append(rules, f.Rule)
-				seen[f.Rule] = true
-			}
-		}
-		fmt.Fprintf(os.Stderr, "  %s/%s (%s)   %s\n",
-			key.namespace, key.name, findings[0].Kind, strings.Join(rules, ", "))
-	}
-	fmt.Fprintf(os.Stderr, "Run 'kube-risk analyze' for full details on these findings.\n")
+	sb.WriteString("---\n_Opened automatically by [kube-risk](https://github.com/thiagoecs/kube-risk)._\n")
+	return sb.String()
 }
 
 // buildPRBody produces the pull request description listing all findings being fixed.
