@@ -32,7 +32,7 @@ jobs:
       issues: write          # needed to open Issues for unfixable findings
 
     steps:
-      - uses: thiagoecs/kube-risk@v0.8.0
+      - uses: thiagoecs/kube-risk@v0.10.0
         with:
           mode: pr
           kubeconfig: ${{ secrets.KUBECONFIG }}

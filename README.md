@@ -42,7 +42,7 @@ kube-risk reads the live cluster state via kubeconfig, explains *why* each findi
 **Download a pre-built binary:**
 
 ```bash
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.8.0/kube-risk-linux-amd64 \
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.10.0/kube-risk-linux-amd64 \
   -o /usr/local/bin/kube-risk
 chmod +x /usr/local/bin/kube-risk
 ```
@@ -137,7 +137,7 @@ Fails the job if HIGH findings exist. Add this to block merges that leave the cl
 Copy [`examples/kube-risk-gate.yml`](examples/kube-risk-gate.yml) to `.github/workflows/kube-risk-gate.yml`:
 
 ```yaml
-- uses: thiagoecs/kube-risk@v0.8.0
+- uses: thiagoecs/kube-risk@v0.10.0
   with:
     mode: analyze
     kubeconfig: ${{ secrets.KUBECONFIG }}
@@ -154,7 +154,7 @@ Runs on a schedule and opens PRs for auto-fixable findings and GitHub Issues for
 Copy [`examples/kube-risk-action.yml`](examples/kube-risk-action.yml) to `.github/workflows/kube-risk.yml`:
 
 ```yaml
-- uses: thiagoecs/kube-risk@v0.8.0
+- uses: thiagoecs/kube-risk@v0.10.0
   with:
     mode: pr
     kubeconfig: ${{ secrets.KUBECONFIG }}
@@ -170,10 +170,10 @@ kube-risk only needs to read your cluster — it never modifies it. Create a min
 
 ```bash
 # Install the read-only service account (one-time setup)
-kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.8.0/rbac.yaml
+kubectl apply -f https://github.com/thiagoecs/kube-risk/releases/download/v0.10.0/rbac.yaml
 
 # Generate a minimal kubeconfig and copy the output
-curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.8.0/get-kubeconfig.sh | bash
+curl -sSL https://github.com/thiagoecs/kube-risk/releases/download/v0.10.0/get-kubeconfig.sh | bash
 ```
 
 The service account has read-only access to workloads — it cannot read secrets, exec into pods, or modify anything.

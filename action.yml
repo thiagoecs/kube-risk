@@ -37,7 +37,7 @@ inputs:
   version:
     description: "kube-risk release version to use"
     required: false
-    default: v0.8.0
+    default: v0.10.0
 
 runs:
   using: composite
