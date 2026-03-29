@@ -1,14 +1,19 @@
 # Copy this file to .github/workflows/kube-risk.yml in your repository.
 #
+# This workflow runs on a schedule and opens PRs for auto-fixable findings
+# and GitHub Issues for findings that require manual attention.
+#
 # Required secrets (Settings → Secrets and variables → Actions):
 #   KUBECONFIG  — contents of your kubeconfig file pointing at the cluster to scan
 #
 # The GITHUB_TOKEN secret is provided automatically by GitHub — no setup needed.
-# It can open PRs in the same repository the workflow runs in.
-#
 # If your manifests live in a different repository, create a personal access token
 # with contents:write and pull-requests:write, store it as a secret (e.g. PAT),
 # and replace ${{ secrets.GITHUB_TOKEN }} with ${{ secrets.PAT }}.
+#
+# Combine with kube-risk-gate.yml for full coverage:
+#   - Gate workflow: runs on push/PR — blocks regressions from being merged
+#   - Fix  workflow: runs on schedule — opens PRs and Issues for existing findings
 
 name: kube-risk
 
@@ -24,10 +29,12 @@ jobs:
     permissions:
       contents: write        # needed to push branches
       pull-requests: write   # needed to open PRs
+      issues: write          # needed to open Issues for unfixable findings
 
     steps:
-      - uses: thiagoecs/kube-risk@v0.4.0
+      - uses: thiagoecs/kube-risk@v0.8.0
         with:
+          mode: pr
           kubeconfig: ${{ secrets.KUBECONFIG }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repo: ${{ github.repository }}

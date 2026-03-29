@@ -1,0 +1,34 @@
+# Copy this file to .github/workflows/kube-risk-gate.yml in your repository.
+#
+# This workflow runs kube-risk as a CI gate: it fails if HIGH findings exist
+# in your cluster, blocking merges until the risks are addressed.
+#
+# Required secrets (Settings → Secrets and variables → Actions):
+#   KUBECONFIG  — contents of your kubeconfig file pointing at the cluster to scan
+#
+# No GitHub token is needed — this mode only reads the cluster, it doesn't
+# write to the repo.
+#
+# Combine with kube-risk-action.yml (the PR/Issue opener) for full coverage:
+#   - Gate workflow: runs on push/PR — blocks regressions from being merged
+#   - Fix  workflow: runs on schedule — opens PRs and Issues for existing findings
+
+name: kube-risk gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  gate:
+    name: Cluster risk gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: thiagoecs/kube-risk@v0.8.0
+        with:
+          mode: analyze
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          namespace: production      # remove to scan all namespaces
+          environment: production

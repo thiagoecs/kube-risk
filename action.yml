@@ -10,12 +10,18 @@ inputs:
   kubeconfig:
     description: "Contents of your kubeconfig file (store as a GitHub secret)"
     required: true
+  mode:
+    description: "'pr' — open PRs/Issues for findings (default). 'analyze' — CI gate: fail the job if HIGH findings exist."
+    required: false
+    default: pr
   github-token:
-    description: "GitHub token with contents:write and pull-requests:write permissions"
-    required: true
+    description: "GitHub token with contents:write and pull-requests:write permissions (required for mode: pr)"
+    required: false
+    default: ''
   repo:
-    description: "Repository containing the manifests, e.g. owner/repo"
-    required: true
+    description: "Repository containing the manifests, e.g. owner/repo (required for mode: pr)"
+    required: false
+    default: ''
   path-template:
     description: "Path template to locate manifests, e.g. manifests/{namespace}/{name}.yaml (optional — auto-discovered if omitted)"
     required: false
@@ -53,7 +59,18 @@ runs:
         printf '%s' "$KUBECONFIG_CONTENT" > "$HOME/.kube/config"
         chmod 600 "$HOME/.kube/config"
 
-    - name: Run kube-risk pr
+    - name: Run kube-risk analyze (CI gate)
+      if: inputs.mode == 'analyze'
+      shell: bash
+      run: |
+        args=(analyze -e "${{ inputs.environment }}")
+        if [[ -n "${{ inputs.namespace }}" ]]; then
+          args+=(-n "${{ inputs.namespace }}")
+        fi
+        kube-risk "${args[@]}"
+
+    - name: Run kube-risk pr (open fixes)
+      if: inputs.mode == 'pr' || inputs.mode == ''
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
