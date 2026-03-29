@@ -17,7 +17,10 @@ var (
 	flagPRRepo       string
 	flagPathTemplate string
 	flagGitHubToken  string
+	flagDryRun       bool
 )
+
+type workloadKey struct{ namespace, name string }
 
 var prCmd = &cobra.Command{
 	Use:   "pr",
@@ -51,6 +54,8 @@ func init() {
 		`Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml" (required)`)
 	prCmd.Flags().StringVar(&flagGitHubToken, "token", "",
 		"GitHub personal access token (default: $GITHUB_TOKEN)")
+	prCmd.Flags().BoolVar(&flagDryRun, "dry-run", false,
+		"Print what would be done without creating branches or PRs (no token required)")
 
 	_ = prCmd.MarkFlagRequired("repo")
 	_ = prCmd.MarkFlagRequired("path-template")
@@ -61,8 +66,8 @@ func runPR(cmd *cobra.Command, args []string) error {
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
-	if token == "" {
-		return fmt.Errorf("GitHub token required: set GITHUB_TOKEN or use --token")
+	if token == "" && !flagDryRun {
+		return fmt.Errorf("GitHub token required: set GITHUB_TOKEN or use --token (or use --dry-run to preview without a token)")
 	}
 
 	if flagEnvironment != "production" && flagEnvironment != "development" {
@@ -108,7 +113,6 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	// Group fixable findings by workload so we open one PR per file.
-	type workloadKey struct{ namespace, name string }
 	groups := make(map[workloadKey][]rules.Finding)
 	var order []workloadKey // preserve deterministic output order
 	for _, f := range fixable {
@@ -117,6 +121,10 @@ func runPR(cmd *cobra.Command, args []string) error {
 			order = append(order, key)
 		}
 		groups[key] = append(groups[key], f)
+	}
+
+	if flagDryRun {
+		return runDryRun(groups, order)
 	}
 
 	gh := github.New(token, flagPRRepo)
@@ -140,6 +148,31 @@ func runPR(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "\n%d PR(s) opened.\n", prCount)
+	return nil
+}
+
+// runDryRun prints what kube-risk pr would do without touching GitHub.
+func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey) error {
+	fmt.Println("DRY RUN — no branches or PRs will be created\n")
+	for _, key := range order {
+		findings := groups[key]
+		fmt.Printf("  Would open PR for %s/%s  (branch: kube-risk/fix-%s-%s)\n",
+			key.namespace, key.name, key.namespace, key.name)
+
+		for _, f := range findings {
+			filePath := resolvePath(flagPathTemplate, key.namespace, key.name)
+			switch f.Rule {
+			case "single-replica":
+				fmt.Printf("    patch  %s  →  spec.replicas: 2\n", filePath)
+			case "unsafe-rollout":
+				fmt.Printf("    patch  %s  →  spec.strategy.rollingUpdate.maxUnavailable: 1\n", filePath)
+			case "missing-pdb":
+				fmt.Printf("    create %s\n", pdbFilePath(flagPathTemplate, key.namespace, key.name))
+			}
+		}
+		fmt.Println()
+	}
+	fmt.Printf("%d PR(s) would be opened.\n", len(order))
 	return nil
 }
 
