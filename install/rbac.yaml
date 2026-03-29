@@ -1,9 +1,11 @@
 # kube-risk read-only service account
 #
 # This creates the minimum permissions kube-risk needs to scan your cluster:
-#   - list deployments       (single-replica, missing-pdb, unsafe-rollout, missing-readiness-probe)
-#   - list statefulsets      (single-replica, missing-pdb, risky-statefulset, missing-readiness-probe)
-#   - list poddisruptionbudgets (missing-pdb)
+#   - list deployments              (single-replica, missing-pdb, unsafe-rollout, missing-readiness-probe, missing-liveness-probe, missing-resources, latest-image-tag)
+#   - list statefulsets             (single-replica, missing-pdb, risky-statefulset, missing-readiness-probe, missing-liveness-probe, missing-resources, latest-image-tag)
+#   - list daemonsets               (missing-resources, missing-liveness-probe, latest-image-tag, daemonset-update-strategy)
+#   - list poddisruptionbudgets     (missing-pdb)
+#   - list horizontalpodautoscalers (hpa-min-replicas)
 #
 # kube-risk NEVER modifies the cluster. All fixes are applied via GitHub PRs.
 #
@@ -45,10 +47,13 @@ metadata:
   name: kube-risk
 rules:
   - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
     verbs: ["get", "list"]
   - apiGroups: ["policy"]
     resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list"]
 
 ---

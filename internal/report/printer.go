@@ -179,6 +179,25 @@ func whyItMatters(f rules.Finding) string {
 		"unsafe-rollout": "This deployment can take down the majority of its capacity in a " +
 			"single step. If the new version has a bug, most of your traffic is " +
 			"already affected before Kubernetes can roll back.",
+		"missing-liveness-probe": "A deadlocked process stays Running forever — Kubernetes " +
+			"never restarts it. During an upgrade, stuck pods block drain completion " +
+			"and leave broken instances serving traffic indefinitely.",
+		"hpa-min-replicas": "This is a hidden trap: you may have set replicas=2 and a PDB, " +
+			"but the HPA quietly scales you back to 1 during quiet periods. The next " +
+			"node drain finds a single pod and takes it down. Fix the HPA first — " +
+			"otherwise all other replica fixes are only effective when traffic is high.",
+		"missing-resources": "Without resource limits, one misbehaving pod can consume all " +
+			"CPU and memory on a node during an upgrade, triggering OOM kills of " +
+			"neighbouring pods. Without requests, the scheduler may place pods on " +
+			"nodes that can't actually support them.",
+		"latest-image-tag": "An unpinned image means rescheduled pods (which happen on every " +
+			"node drain) may start a different version than what you originally deployed. " +
+			"Rollback becomes impossible — you can't redeploy the old image if you " +
+			"don't know what it was.",
+		"daemonset-update-strategy": "OnDelete on a DaemonSet means your monitoring agents, " +
+			"log collectors, or network plugins silently run stale code after every " +
+			"spec change. On upgraded nodes this can cause gaps in observability or " +
+			"incorrect behaviour that's very hard to diagnose.",
 	}
 
 	if reason, ok := reasons[f.Rule]; ok {

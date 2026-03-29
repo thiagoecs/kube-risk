@@ -33,8 +33,13 @@ func (r *Runner) RunAll(ctx context.Context) ([]Finding, error) {
 		{"single-replica", CheckSingleReplica},
 		{"missing-pdb", CheckMissingPDB},
 		{"missing-readiness-probe", CheckMissingReadinessProbe},
+		{"missing-liveness-probe", CheckMissingLivenessProbe},
 		{"unsafe-rollout", CheckUnsafeRollout},
 		{"risky-statefulset", CheckRiskyStatefulSet},
+		{"missing-resources", CheckMissingResources},
+		{"latest-image-tag", CheckLatestImageTag},
+		{"hpa-min-replicas", CheckHPAMinReplicas},
+		{"daemonset-update-strategy", CheckDaemonSetUpdateStrategy},
 	}
 
 	var findings []Finding

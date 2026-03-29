@@ -15,12 +15,17 @@ import "strings"
 //   unsafe-rollout      4 — large blast radius but at least it's a rolling update
 //   risky-statefulset   4 — Parallel is a tradeoff, not always wrong
 var baseScores = map[string]int{
-	"single-replica:HIGH":            9,
-	"risky-statefulset:HIGH":         8,
-	"missing-readiness-probe:HIGH":   7,
-	"missing-pdb:MEDIUM":             5,
-	"risky-statefulset:MEDIUM":       4,
-	"unsafe-rollout:MEDIUM":          4,
+	"single-replica:HIGH":              9,
+	"risky-statefulset:HIGH":           8,
+	"missing-liveness-probe:HIGH":      7,
+	"missing-readiness-probe:HIGH":     7,
+	"hpa-min-replicas:HIGH":            7, // silently defeats replica+PDB fixes
+	"missing-pdb:MEDIUM":               5,
+	"risky-statefulset:MEDIUM":         4,
+	"unsafe-rollout:MEDIUM":            4,
+	"daemonset-update-strategy:MEDIUM": 4,
+	"missing-resources:MEDIUM":         3,
+	"latest-image-tag:MEDIUM":          3,
 }
 
 // namespaceBoost returns a score adjustment based on how production-like the
