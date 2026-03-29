@@ -26,6 +26,13 @@ go run . analyze
 
 # Point at a specific kubeconfig
 go run . analyze --kubeconfig ~/.kube/my-cluster.yaml
+
+# Open GitHub PRs with YAML fixes for fixable findings (V4)
+# Token is read from GITHUB_TOKEN env var or --token flag
+go run . pr \
+  --repo owner/repo \
+  --path-template "manifests/{namespace}/{name}.yaml" \
+  -n production
 ```
 
 ## Tests
@@ -86,6 +93,7 @@ main.go                          — entry point, calls cmd.Execute()
 cmd/
   root.go                        — root Cobra command
   analyze.go                     — "kube-risk analyze" (flags: --kubeconfig, -n, -e)
+  pr.go                          — "kube-risk pr" (flags: --repo, --path-template, --token, -n, -e)
 internal/
   k8s/client.go                  — builds kubernetes.Interface from kubeconfig
   rules/
@@ -98,6 +106,8 @@ internal/
     unsafe_rollout.go            — maxUnavailable >= 50% of replicas (MEDIUM, score 4)
     risky_statefulset.go         — OnDelete (HIGH, score 8) or Parallel (MEDIUM, score 4)
   report/printer.go              — findings list → workload summary → "Fix this first"
+  github/client.go               — GitHub REST API wrapper (GetFile, CreateBranch, PutFile, CreatePR)
+  patcher/patcher.go             — YAML patching via yaml.v3 Node API; ExtractPDBYAML
 test-cluster/
   broken-workloads.yaml          — intentionally misconfigured workloads for testing
 ```
@@ -109,12 +119,30 @@ test-cluster/
    func CheckYourRule(ctx context.Context, client kubernetes.Interface, namespace string) ([]Finding, error)
    ```
 2. Register it in `internal/rules/runner.go` inside the `allRules` slice.
-3. Add a base score entry to `baseScores` in `internal/rules/scoring.go` using key `"rule-id:SEVERITY"`. Falls back to 7/4/2 by severity if absent.
+3. Add a base score entry to `baseScores` in `internal/rules/scoring.go` using key `"rule-id:SEVERITY"`. Falls back to 7/4/2 by severity if absent. `namespaceBoost()` applies +2 for prod/live namespaces and -1 for dev/staging/test namespaces (skipped in development mode).
 4. Add an entry to `whyItMatters()` in `internal/report/printer.go` for the "Fix this first" rationale.
 5. Only set `Finding.Fix` if the correct fix is unambiguous and derivable from the workload spec. Leave empty if it requires app-specific knowledge.
 6. Add a test workload to `test-cluster/broken-workloads.yaml` that triggers it.
 7. If the rule should be skipped in development mode, add its name to `devSkipRules` in `runner.go`.
 8. Run `go build ./...` and `go run . analyze -n risky-apps` to confirm.
+
+## kube-risk pr — how it works
+
+The `pr` command runs the same analysis as `analyze`, then for each workload with at least one fixable finding:
+
+1. Resolves the manifest path using `--path-template` (e.g. `manifests/{namespace}/{name}.yaml`)
+2. Fetches the file from GitHub
+3. Patches it in-memory using the `yaml.v3` Node API (preserves comments)
+4. Creates a branch `kube-risk/fix-{namespace}-{name}` and commits the patched file
+5. For `missing-pdb` findings, also creates a new `{name}-pdb.yaml` in the same directory
+6. Opens a PR with a description of every finding (fixable and unfixable)
+
+**Fixable rules** (Fix field is non-empty): `single-replica`, `missing-pdb`, `unsafe-rollout`
+**Not auto-fixed**: `missing-readiness-probe`, `risky-statefulset` — these require app-specific knowledge (port, health path, ordering guarantees). Planned for V5 via LLM.
+
+**`--path-template` is a stepping stone.** It works for repos with a clean convention (e.g. `manifests/{namespace}/{name}.yaml`) but requires the user to know the structure. A future V4 iteration should auto-discover files by scanning the repo for YAML containing matching `name:` + `namespace:` fields — no flag needed.
+
+The test target repo is `thiagoecs/kube-risk-sample-app` with `manifests/{dev,staging,production}/{backend,database,frontend}.yaml`.
 
 ## Key conventions
 
@@ -131,5 +159,5 @@ test-cluster/
 | V1 | CLI + 5 rules + report — **done** |
 | V2 | Risk scoring, prioritization, environment awareness — **done** |
 | V3 | Specific fix recommendations per finding — **done** |
-| V4 | GitHub/GitLab PR generation with YAML fixes |
+| V4 | GitHub PR generation with YAML fixes — **done** |
 | V5 | LLM layer that reads repo and adapts to team conventions |
