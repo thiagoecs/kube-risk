@@ -12,3 +12,6 @@ go.work.sum
 # OS
 .DS_Store
 Thumbs.db
+
+# Internal AI assistant guidance — kept local only
+CLAUDE.md
