@@ -79,6 +79,12 @@ func fetchAnnotations(ctx context.Context, client kubernetes.Interface, ns, name
 			return nil
 		}
 		return obj.Annotations
+	case "HorizontalPodAutoscaler":
+		obj, err := client.AutoscalingV2().HorizontalPodAutoscalers(ns).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil
+		}
+		return obj.Annotations
 	}
 	return nil
 }

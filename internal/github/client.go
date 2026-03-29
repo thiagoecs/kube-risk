@@ -193,9 +193,10 @@ func (c *Client) DiscoverManifests() (map[string]string, error) {
 	}
 
 	workloadKinds := map[string]bool{
-		"Deployment":  true,
-		"StatefulSet": true,
-		"DaemonSet":   true,
+		"Deployment":                  true,
+		"StatefulSet":                 true,
+		"DaemonSet":                   true,
+		"HorizontalPodAutoscaler":     true,
 	}
 
 	result := make(map[string]string)

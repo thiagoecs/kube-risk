@@ -32,8 +32,8 @@ func TestCheckDaemonSetUpdateStrategy(t *testing.T) {
 		if f.Rule != "daemonset-update-strategy" {
 			t.Errorf("want rule daemonset-update-strategy, got %s", f.Rule)
 		}
-		if f.Fix != "" {
-			t.Error("want empty Fix — fix is a simple spec change but we don't auto-patch DaemonSets yet")
+		if f.Fix == "" {
+			t.Error("want non-empty Fix for daemonset-update-strategy")
 		}
 	})
 

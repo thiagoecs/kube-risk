@@ -12,7 +12,7 @@ import (
 )
 
 // PatchFile applies YAML fixes to content for the given findings.
-// Handles: single-replica (sets spec.replicas=2), unsafe-rollout (sets maxUnavailable=1).
+// Handles: single-replica, unsafe-rollout, hpa-min-replicas, daemonset-update-strategy.
 // Returns the patched bytes; if no applicable fixes, content is returned unchanged.
 func PatchFile(content []byte, findings []rules.Finding) ([]byte, error) {
 	var doc yaml.Node
@@ -31,6 +31,16 @@ func PatchFile(content []byte, findings []rules.Finding) ([]byte, error) {
 		case "unsafe-rollout":
 			if err := setIntAtPath(&doc, []string{"spec", "strategy", "rollingUpdate", "maxUnavailable"}, 1); err != nil {
 				return nil, fmt.Errorf("patching maxUnavailable: %w", err)
+			}
+			changed = true
+		case "hpa-min-replicas":
+			if err := setIntAtPath(&doc, []string{"spec", "minReplicas"}, 2); err != nil {
+				return nil, fmt.Errorf("patching minReplicas: %w", err)
+			}
+			changed = true
+		case "daemonset-update-strategy":
+			if err := setStringAtPath(&doc, []string{"spec", "updateStrategy", "type"}, "RollingUpdate"); err != nil {
+				return nil, fmt.Errorf("patching updateStrategy: %w", err)
 			}
 			changed = true
 		}
@@ -66,6 +76,36 @@ func ExtractPDBYAML(fix string) string {
 		}
 	}
 	return fix
+}
+
+// setStringAtPath navigates the yaml.v3 Node tree and sets the leaf to a string value.
+func setStringAtPath(doc *yaml.Node, path []string, value string) error {
+	node := doc
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		node = node.Content[0]
+	}
+	for i, key := range path {
+		if node.Kind != yaml.MappingNode {
+			return fmt.Errorf("expected mapping at path segment %q", key)
+		}
+		found := false
+		for j := 0; j+1 < len(node.Content); j += 2 {
+			if node.Content[j].Value == key {
+				if i == len(path)-1 {
+					node.Content[j+1].Value = value
+					node.Content[j+1].Tag = "!!str"
+					return nil
+				}
+				node = node.Content[j+1]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("key %q not found", key)
+		}
+	}
+	return nil
 }
 
 // setIntAtPath navigates the yaml.v3 Node tree by dot-separated path and sets

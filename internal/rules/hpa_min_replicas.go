@@ -27,21 +27,7 @@ func CheckHPAMinReplicas(ctx context.Context, client kubernetes.Interface, names
 			minReplicas = *hpa.Spec.MinReplicas
 		}
 		if minReplicas <= 1 {
-			findings = append(findings, Finding{
-				Namespace: hpa.Namespace,
-				Name:      hpa.Spec.ScaleTargetRef.Name,
-				Kind:      hpa.Spec.ScaleTargetRef.Kind,
-				Rule:      "hpa-min-replicas",
-				Severity:  SeverityHigh,
-				Message: fmt.Sprintf(
-					"HPA %q targets %s %q with minReplicas=%d. During low-traffic periods, the HPA "+
-						"will scale the workload down to 1 replica — making any replica count or PDB "+
-						"fix ineffective. When a node drain then occurs, that single pod is evicted "+
-						"and the workload goes down. Set minReplicas >= 2 to ensure there is always "+
-						"a fallback pod during drains.",
-					hpa.Name, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, minReplicas,
-				),
-			})
+			findings = append(findings, hpaFinding(hpa.Namespace, hpa.Name, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, minReplicas))
 		}
 	}
 	return findings, nil
@@ -61,22 +47,33 @@ func checkHPAV1(ctx context.Context, client kubernetes.Interface, namespace stri
 			minReplicas = *hpa.Spec.MinReplicas
 		}
 		if minReplicas <= 1 {
-			findings = append(findings, Finding{
-				Namespace: hpa.Namespace,
-				Name:      hpa.Spec.ScaleTargetRef.Name,
-				Kind:      hpa.Spec.ScaleTargetRef.Kind,
-				Rule:      "hpa-min-replicas",
-				Severity:  SeverityHigh,
-				Message: fmt.Sprintf(
-					"HPA %q targets %s %q with minReplicas=%d. During low-traffic periods, the HPA "+
-						"will scale the workload down to 1 replica — making any replica count or PDB "+
-						"fix ineffective. When a node drain then occurs, that single pod is evicted "+
-						"and the workload goes down. Set minReplicas >= 2 to ensure there is always "+
-						"a fallback pod during drains.",
-					hpa.Name, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, minReplicas,
-				),
-			})
+			findings = append(findings, hpaFinding(hpa.Namespace, hpa.Name, hpa.Spec.ScaleTargetRef.Kind, hpa.Spec.ScaleTargetRef.Name, minReplicas))
 		}
 	}
 	return findings, nil
+}
+
+func hpaFinding(namespace, hpaName, targetKind, targetName string, minReplicas int32) Finding {
+	return Finding{
+		Namespace: namespace,
+		Name:      hpaName,
+		Kind:      "HorizontalPodAutoscaler",
+		Rule:      "hpa-min-replicas",
+		Severity:  SeverityHigh,
+		Message: fmt.Sprintf(
+			"HPA %q targets %s %q with minReplicas=%d. During low-traffic periods, the HPA "+
+				"will scale the workload down to 1 replica — making any replica count or PDB "+
+				"fix ineffective. When a node drain then occurs, that single pod is evicted "+
+				"and the workload goes down. Set minReplicas >= 2 to ensure there is always "+
+				"a fallback pod during drains.",
+			hpaName, targetKind, targetName, minReplicas,
+		),
+		Fix: fmt.Sprintf(
+			"kubectl patch hpa %s -n %s "+
+				"--type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/minReplicas\",\"value\":2}]'\n\n"+
+				"Why 2: ensures at least one pod is always available as a fallback during\n"+
+				"node drains, regardless of traffic levels.",
+			hpaName, namespace,
+		),
+	}
 }

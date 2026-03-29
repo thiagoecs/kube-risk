@@ -56,7 +56,7 @@ func TestCheckHPAMinReplicas(t *testing.T) {
 		}
 	})
 
-	t.Run("finding name matches HPA target not HPA itself", func(t *testing.T) {
+	t.Run("finding points to the HPA itself so it can be auto-patched", func(t *testing.T) {
 		hpa := minHPA("my-hpa", "default", "my-app", 1, 10)
 		client := fake.NewSimpleClientset(hpa)
 
@@ -67,8 +67,27 @@ func TestCheckHPAMinReplicas(t *testing.T) {
 		if len(findings) != 1 {
 			t.Fatalf("want 1 finding, got %d", len(findings))
 		}
-		if findings[0].Name != "my-app" {
-			t.Errorf("want finding Name=my-app (the target), got %s", findings[0].Name)
+		if findings[0].Name != "my-hpa" {
+			t.Errorf("want finding Name=my-hpa (the HPA), got %s", findings[0].Name)
+		}
+		if findings[0].Kind != "HorizontalPodAutoscaler" {
+			t.Errorf("want Kind=HorizontalPodAutoscaler, got %s", findings[0].Kind)
+		}
+	})
+
+	t.Run("finding Fix is set", func(t *testing.T) {
+		hpa := minHPA("my-hpa", "default", "my-app", 1, 10)
+		client := fake.NewSimpleClientset(hpa)
+
+		findings, err := CheckHPAMinReplicas(ctx, client, "default")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(findings) != 1 {
+			t.Fatalf("want 1 finding, got %d", len(findings))
+		}
+		if findings[0].Fix == "" {
+			t.Error("want non-empty Fix for hpa-min-replicas")
 		}
 	})
 }

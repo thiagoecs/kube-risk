@@ -38,6 +38,13 @@ func CheckDaemonSetUpdateStrategy(ctx context.Context, client kubernetes.Interfa
 						"RollingUpdate to get automatic, controlled rollouts.",
 					ds.Name,
 				),
+				Fix: fmt.Sprintf(
+					"kubectl patch daemonset %s -n %s "+
+						"--type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/updateStrategy/type\",\"value\":\"RollingUpdate\"}]'\n\n"+
+						"Why RollingUpdate: Kubernetes will automatically replace pods one node at a time,\n"+
+						"ensuring your agents stay current after every deploy or cluster upgrade.",
+					ds.Name, ds.Namespace,
+				),
 			})
 		}
 	}
