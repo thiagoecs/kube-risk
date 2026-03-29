@@ -152,6 +152,14 @@ The test target repo is `thiagoecs/kube-risk-sample-app` with `manifests/{dev,st
 - **`--environment` / `-e`** — `production` (default, all rules) or `development` (skips `single-replica` and `missing-pdb`, no namespace boost). The skipped rules are intentional in dev — flagging them trains operators to ignore the tool.
 - **Exit code 1 on any HIGH finding** — makes the tool usable as a CI gate.
 
+## GitHub Action
+
+`action.yml` in the repo root makes kube-risk usable as a reusable GitHub Action. Users copy `examples/kube-risk-action.yml` into their repo's `.github/workflows/` — that's the only setup required beyond two secrets.
+
+The action downloads the pre-built `linux/amd64` binary from the GitHub release (no Go setup on the runner). Releases live at `thiagoecs/kube-risk/releases` and are tagged `vX.Y.Z`. The `version` input defaults to the latest stable tag.
+
+**Adding a new release:** build `GOOS=linux GOARCH=amd64 go build -o kube-risk-linux-amd64 .`, then `gh release create vX.Y.Z kube-risk-linux-amd64 --repo thiagoecs/kube-risk`.
+
 ## Roadmap (don't implement ahead of the current phase)
 
 | Version | Focus |
@@ -159,5 +167,5 @@ The test target repo is `thiagoecs/kube-risk-sample-app` with `manifests/{dev,st
 | V1 | CLI + 5 rules + report — **done** |
 | V2 | Risk scoring, prioritization, environment awareness — **done** |
 | V3 | Specific fix recommendations per finding — **done** |
-| V4 | GitHub PR generation with YAML fixes — **done** |
+| V4 | GitHub PR generation with YAML fixes + GitHub Action — **done** |
 | V5 | LLM layer that reads repo and adapts to team conventions |

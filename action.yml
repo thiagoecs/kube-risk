@@ -1,0 +1,68 @@
+name: kube-risk
+description: Analyze Kubernetes cluster for upgrade risks and open GitHub PRs with YAML fixes
+author: thiagoecs
+
+branding:
+  icon: shield
+  color: red
+
+inputs:
+  kubeconfig:
+    description: Contents of your kubeconfig file (store as a GitHub secret)
+    required: true
+  github-token:
+    description: GitHub token with contents:write and pull-requests:write permissions
+    required: true
+  repo:
+    description: Repository containing the manifests, e.g. "owner/repo"
+    required: true
+  path-template:
+    description: Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml"
+    required: true
+  namespace:
+    description: Kubernetes namespace to scan (default: all namespaces)
+    required: false
+    default: ''
+  environment:
+    description: Environment type — "production" (all rules) or "development" (skips scale rules)
+    required: false
+    default: production
+  version:
+    description: kube-risk release version to use
+    required: false
+    default: v0.4.0
+
+runs:
+  using: composite
+  steps:
+    - name: Download kube-risk
+      shell: bash
+      run: |
+        curl -sSL \
+          "https://github.com/thiagoecs/kube-risk/releases/download/${{ inputs.version }}/kube-risk-linux-amd64" \
+          -o /usr/local/bin/kube-risk
+        chmod +x /usr/local/bin/kube-risk
+
+    - name: Write kubeconfig
+      shell: bash
+      env:
+        KUBECONFIG_CONTENT: ${{ inputs.kubeconfig }}
+      run: |
+        mkdir -p "$HOME/.kube"
+        printf '%s' "$KUBECONFIG_CONTENT" > "$HOME/.kube/config"
+        chmod 600 "$HOME/.kube/config"
+
+    - name: Run kube-risk pr
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        args=(pr
+          --repo "${{ inputs.repo }}"
+          --path-template "${{ inputs.path-template }}"
+          -e "${{ inputs.environment }}"
+        )
+        if [[ -n "${{ inputs.namespace }}" ]]; then
+          args+=(-n "${{ inputs.namespace }}")
+        fi
+        kube-risk "${args[@]}"

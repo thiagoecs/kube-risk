@@ -1,0 +1,36 @@
+# Copy this file to .github/workflows/kube-risk.yml in your repository.
+#
+# Required secrets (Settings → Secrets and variables → Actions):
+#   KUBECONFIG  — contents of your kubeconfig file pointing at the cluster to scan
+#
+# The GITHUB_TOKEN secret is provided automatically by GitHub — no setup needed.
+# It can open PRs in the same repository the workflow runs in.
+#
+# If your manifests live in a different repository, create a personal access token
+# with contents:write and pull-requests:write, store it as a secret (e.g. PAT),
+# and replace ${{ secrets.GITHUB_TOKEN }} with ${{ secrets.PAT }}.
+
+name: kube-risk
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'   # Every Monday at 09:00 UTC — adjust to suit your team
+  workflow_dispatch:        # Allow triggering manually from the Actions tab
+
+jobs:
+  scan:
+    name: Scan cluster and open fix PRs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # needed to push branches
+      pull-requests: write   # needed to open PRs
+
+    steps:
+      - uses: thiagoecs/kube-risk@v0.4.0
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repo: ${{ github.repository }}
+          path-template: manifests/{namespace}/{name}.yaml
+          namespace: production        # remove this line to scan all namespaces
+          environment: production
