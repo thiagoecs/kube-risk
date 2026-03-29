@@ -119,8 +119,146 @@ spec:
           image: nginx:stable
 
 ---
-# ── 5. A "good" deployment — should produce ZERO findings ────
-# Has 3 replicas, a readiness probe, a sensible rollout, AND a PDB.
+# ── 5. Triggers: daemonset-update-strategy (OnDelete) ────────
+# A node agent (e.g. log shipper) that will never auto-update.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-agent
+  namespace: risky-apps
+spec:
+  selector:
+    matchLabels:
+      app: node-agent
+  updateStrategy:
+    type: OnDelete   # MEDIUM — pods must be deleted manually to pick up updates
+  template:
+    metadata:
+      labels:
+        app: node-agent
+    spec:
+      containers:
+        - name: agent
+          image: nginx:stable
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+---
+# ── 6. Triggers: latest-image-tag + missing-resources + missing-liveness-probe ──
+# A typical "I'll fix it later" deployment with multiple hygiene issues.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: untagged-app
+  namespace: risky-apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: untagged-app
+  template:
+    metadata:
+      labels:
+        app: untagged-app
+    spec:
+      containers:
+        - name: app
+          image: nginx:latest   # MEDIUM — non-deterministic, impossible to roll back
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          # No resources  → MEDIUM (missing-resources)
+          # No livenessProbe → HIGH  (missing-liveness-probe)
+
+---
+# ── 7. Triggers: hpa-min-replicas (minReplicas=1) ────────────
+# An HPA that silently defeats the replica protection on scaler-target.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaler-target
+  namespace: risky-apps
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: scaler-target
+  template:
+    metadata:
+      labels:
+        app: scaler-target
+    spec:
+      containers:
+        - name: app
+          image: nginx:stable
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scaler-target-hpa
+  namespace: risky-apps
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: scaler-target
+  minReplicas: 1    # HIGH — can scale to 1 during quiet periods, defeating any PDB
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50
+
+---
+# ── 8. A "good" deployment — should produce ZERO findings ────
+# Passes all 10 rules: replicas, probes, rollout, PDB, resources, pinned image.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -144,12 +282,25 @@ spec:
       containers:
         - name: app
           image: nginx:stable
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
           readinessProbe:
             httpGet:
               path: /
               port: 80
             initialDelaySeconds: 3
             periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
 
 ---
 apiVersion: policy/v1
