@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/thiagomcp/kube-risk/internal/github"
 	"github.com/thiagomcp/kube-risk/internal/k8s"
+	"github.com/thiagomcp/kube-risk/internal/llm"
 	"github.com/thiagomcp/kube-risk/internal/patcher"
 	"github.com/thiagomcp/kube-risk/internal/rules"
 )
@@ -17,6 +18,7 @@ var (
 	flagPRRepo       string
 	flagPathTemplate string
 	flagGitHubToken  string
+	flagLLMKey       string
 	flagDryRun       bool
 )
 
@@ -54,6 +56,8 @@ func init() {
 		`Path template to locate manifests, e.g. "manifests/{namespace}/{name}.yaml" (optional — auto-discovered if omitted)`)
 	prCmd.Flags().StringVar(&flagGitHubToken, "token", "",
 		"GitHub personal access token (default: $GITHUB_TOKEN)")
+	prCmd.Flags().StringVar(&flagLLMKey, "llm-key", "",
+		"Anthropic API key for AI-generated fixes (default: $ANTHROPIC_API_KEY). When set, unfixable findings are patched by Claude instead of opening an Issue.")
 	prCmd.Flags().BoolVar(&flagDryRun, "dry-run", false,
 		"Print what would be done without creating branches or PRs (no token required)")
 
@@ -64,6 +68,11 @@ func runPR(cmd *cobra.Command, args []string) error {
 	token := flagGitHubToken
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
+	}
+
+	llmKey := flagLLMKey
+	if llmKey == "" {
+		llmKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
 	if token == "" && !flagDryRun {
 		return fmt.Errorf("GitHub token required: set GITHUB_TOKEN or use --token (or use --dry-run to preview without a token)")
@@ -146,9 +155,30 @@ func runPR(cmd *cobra.Command, args []string) error {
 		unfixable[key] = append(unfixable[key], f)
 	}
 
+	// When an LLM key is available, unfixable-only workloads get a PR with an
+	// AI-generated patch instead of a GitHub Issue. Merge them into the PR flow.
+	if llmKey != "" {
+		for _, key := range unfixableOrder {
+			if _, seen := groups[key]; !seen {
+				order = append(order, key)
+				groups[key] = nil // no mechanical fixes, LLM handles everything
+			}
+		}
+		unfixableOrder = nil
+		unfixable = make(map[workloadKey][]rules.Finding)
+		if len(order) > 0 {
+			fmt.Fprintf(os.Stderr, "ANTHROPIC_API_KEY detected — AI-generated fixes will be applied for unfixable findings.\n")
+		}
+	}
+
 	gh := github.New(token, flagPRRepo)
 
-	if len(fixable) == 0 {
+	if len(order) == 0 {
+		fmt.Println("No findings — nothing to open PRs for.")
+		return nil
+	}
+
+	if len(fixable) == 0 && llmKey == "" {
 		fmt.Println("No fixable findings — nothing to open PRs for.")
 		if len(unfixableOrder) > 0 {
 			fmt.Fprintf(os.Stderr, "\nOpening issue(s) for findings with no auto-fix...\n")
@@ -204,7 +234,7 @@ func runPR(cmd *cobra.Command, args []string) error {
 			prCount++
 			continue
 		}
-		url, err := openWorkloadPR(gh, key.namespace, key.name, groups[key], allFindings[key], defaultBranch, filePath)
+		url, err := openWorkloadPR(gh, key.namespace, key.name, groups[key], allFindings[key], llmKey, defaultBranch, filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 			continue
@@ -317,8 +347,8 @@ func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey, path
 
 // openWorkloadPR creates a branch, commits the patched file (and PDB file if
 // needed), then opens a pull request. Returns the PR URL.
-func openWorkloadPR(gh *github.Client, namespace, name string, fixableFindings, allFindings []rules.Finding, defaultBranch, filePath string) (string, error) {
-	findings := fixableFindings
+// llmKey is optional — when non-empty, unfixable findings are patched by Claude.
+func openWorkloadPR(gh *github.Client, namespace, name string, fixableFindings, allFindings []rules.Finding, llmKey, defaultBranch, filePath string) (string, error) {
 	branchName := fmt.Sprintf("kube-risk/fix-%s-%s", namespace, name)
 
 	repoFile, err := gh.GetFile(filePath)
@@ -326,18 +356,40 @@ func openWorkloadPR(gh *github.Client, namespace, name string, fixableFindings, 
 		return "", fmt.Errorf("fetching %s: %w", filePath, err)
 	}
 
-	// Apply YAML patches for single-replica and unsafe-rollout.
-	patched, err := patcher.PatchFile(repoFile.Content, findings)
+	// Step 1: apply mechanical YAML patches.
+	patched, err := patcher.PatchFile(repoFile.Content, fixableFindings)
 	if err != nil {
 		return "", fmt.Errorf("patching %s: %w", filePath, err)
 	}
 	mainFileChanged := string(patched) != string(repoFile.Content)
 
+	// Step 2: apply LLM-generated fixes for unfixable findings when key is set.
+	var llmFixedFindings []rules.Finding
+	if llmKey != "" {
+		var unfixable []rules.Finding
+		for _, f := range allFindings {
+			if f.Fix == "" {
+				unfixable = append(unfixable, f)
+			}
+		}
+		if len(unfixable) > 0 {
+			llmPatched, err := llm.Suggest(llmKey, patched, unfixable)
+			if err != nil {
+				// LLM failure is non-fatal — log and continue with mechanical fixes only.
+				fmt.Fprintf(os.Stderr, "\n    [LLM] warning: %v — skipping AI fixes\n", err)
+			} else if string(llmPatched) != string(patched) {
+				patched = llmPatched
+				mainFileChanged = true
+				llmFixedFindings = unfixable
+			}
+		}
+	}
+
 	// Collect missing-pdb findings — each needs a new PDB file.
 	var pdbFinding *rules.Finding
-	for i := range findings {
-		if findings[i].Rule == "missing-pdb" {
-			pdbFinding = &findings[i]
+	for i := range fixableFindings {
+		if fixableFindings[i].Rule == "missing-pdb" {
+			pdbFinding = &fixableFindings[i]
 			break
 		}
 	}
@@ -368,7 +420,7 @@ func openWorkloadPR(gh *github.Client, namespace, name string, fixableFindings, 
 
 	prURL, err := gh.CreatePR(
 		fmt.Sprintf("fix(kube-risk): %s in %s", name, namespace),
-		buildPRBody(allFindings),
+		buildPRBody(allFindings, llmFixedFindings),
 		branchName,
 		defaultBranch,
 	)
@@ -409,14 +461,23 @@ func buildIssueBody(namespace, name string, findings []rules.Finding) string {
 }
 
 // buildPRBody produces the pull request description listing all findings.
-// Fixable findings are marked as applied; unfixable ones are called out as
-// requiring manual attention so the reviewer has the full picture.
-func buildPRBody(findings []rules.Finding) string {
-	var fixed, manual []rules.Finding
+// llmFixed is the subset of findings that were patched by the LLM (may be nil).
+// Mechanically-fixed findings show the applied change; LLM-fixed ones are marked
+// for review; remaining unfixable ones are listed for manual attention.
+func buildPRBody(findings []rules.Finding, llmFixed []rules.Finding) string {
+	llmRules := make(map[string]bool, len(llmFixed))
+	for _, f := range llmFixed {
+		llmRules[f.Rule] = true
+	}
+
+	var fixed, aiFixed, manual []rules.Finding
 	for _, f := range findings {
-		if f.Fix != "" {
+		switch {
+		case f.Fix != "":
 			fixed = append(fixed, f)
-		} else {
+		case llmRules[f.Rule]:
+			aiFixed = append(aiFixed, f)
+		default:
 			manual = append(manual, f)
 		}
 	}
@@ -433,6 +494,16 @@ func buildPRBody(findings []rules.Finding) string {
 			sb.WriteString("<details><summary>Change applied</summary>\n\n```\n")
 			sb.WriteString(f.Fix)
 			sb.WriteString("\n```\n\n</details>\n\n")
+		}
+	}
+
+	if len(aiFixed) > 0 {
+		sb.WriteString("### 🤖 AI-generated fix — please review before merging\n\n")
+		sb.WriteString("These fixes were generated by Claude based on the workload spec. ")
+		sb.WriteString("They are best-effort — verify the probe paths, ports, and timing values match your app before merging:\n\n")
+		for _, f := range aiFixed {
+			sb.WriteString(fmt.Sprintf("**`%s`** — %s severity\n\n", f.Rule, f.Severity))
+			sb.WriteString(f.Message + "\n\n")
 		}
 	}
 
