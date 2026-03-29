@@ -153,7 +153,8 @@ func runPR(cmd *cobra.Command, args []string) error {
 
 // runDryRun prints what kube-risk pr would do without touching GitHub.
 func runDryRun(groups map[workloadKey][]rules.Finding, order []workloadKey) error {
-	fmt.Println("DRY RUN — no branches or PRs will be created\n")
+	fmt.Println("DRY RUN — no branches or PRs will be created")
+	fmt.Println()
 	for _, key := range order {
 		findings := groups[key]
 		fmt.Printf("  Would open PR for %s/%s  (branch: kube-risk/fix-%s-%s)\n",
