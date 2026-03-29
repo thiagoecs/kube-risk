@@ -117,6 +117,49 @@ func (c *Client) CreatePR(title, body, head, base string) (string, error) {
 	return resp.HTMLURL, nil
 }
 
+// FindOpenPR returns the HTML URL of an open PR whose head branch matches
+// the given branch name, or "" if none exists.
+func (c *Client) FindOpenPR(branch string) (string, error) {
+	var prs []struct {
+		HTMLURL string `json:"html_url"`
+	}
+	path := fmt.Sprintf("/repos/%s/pulls?state=open&head=%s:%s&per_page=1",
+		c.repo, ownerFromRepo(c.repo), branch)
+	if err := c.get(path, &prs); err != nil {
+		return "", err
+	}
+	if len(prs) == 0 {
+		return "", nil
+	}
+	return prs[0].HTMLURL, nil
+}
+
+// FindOpenIssue returns the HTML URL of the first open issue with the given
+// title and the "kube-risk" label, or "" if none exists.
+func (c *Client) FindOpenIssue(title string) (string, error) {
+	var issues []struct {
+		Title   string `json:"title"`
+		HTMLURL string `json:"html_url"`
+	}
+	path := fmt.Sprintf("/repos/%s/issues?state=open&labels=kube-risk&per_page=100", c.repo)
+	if err := c.get(path, &issues); err != nil {
+		return "", err
+	}
+	for _, issue := range issues {
+		if issue.Title == title {
+			return issue.HTMLURL, nil
+		}
+	}
+	return "", nil
+}
+
+func ownerFromRepo(repo string) string {
+	if i := strings.Index(repo, "/"); i >= 0 {
+		return repo[:i]
+	}
+	return repo
+}
+
 // CreateIssue opens a GitHub issue and returns its HTML URL.
 func (c *Client) CreateIssue(title, body string, labels []string) (string, error) {
 	req := map[string]interface{}{

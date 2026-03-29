@@ -150,12 +150,14 @@ func runPR(cmd *cobra.Command, args []string) error {
 		if len(unfixableOrder) > 0 {
 			fmt.Fprintf(os.Stderr, "\nOpening issue(s) for findings with no auto-fix...\n")
 			for _, key := range unfixableOrder {
+				issueTitle := fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name)
 				fmt.Fprintf(os.Stderr, "  Opening issue for %s/%s ... ", key.namespace, key.name)
-				url, err := gh.CreateIssue(
-					fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name),
-					buildIssueBody(key.namespace, key.name, unfixable[key]),
-					[]string{"kube-risk"},
-				)
+				if existing, err := gh.FindOpenIssue(issueTitle); err == nil && existing != "" {
+					fmt.Fprintf(os.Stderr, "already open\n")
+					fmt.Printf("%s\n", existing)
+					continue
+				}
+				url, err := gh.CreateIssue(issueTitle, buildIssueBody(key.namespace, key.name, unfixable[key]), []string{"kube-risk"})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 					continue
@@ -191,7 +193,14 @@ func runPR(cmd *cobra.Command, args []string) error {
 			fmt.Fprintf(os.Stderr, "  Skipping %s/%s — manifest not found in repo\n", key.namespace, key.name)
 			continue
 		}
+		branchName := fmt.Sprintf("kube-risk/fix-%s-%s", key.namespace, key.name)
 		fmt.Fprintf(os.Stderr, "  Opening PR for %s/%s ... ", key.namespace, key.name)
+		if existing, err := gh.FindOpenPR(branchName); err == nil && existing != "" {
+			fmt.Fprintf(os.Stderr, "already open\n")
+			fmt.Printf("%s\n", existing)
+			prCount++
+			continue
+		}
 		url, err := openWorkloadPR(gh, key.namespace, key.name, groups[key], allFindings[key], defaultBranch, filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
@@ -208,12 +217,15 @@ func runPR(cmd *cobra.Command, args []string) error {
 	if len(unfixableOrder) > 0 {
 		fmt.Fprintf(os.Stderr, "\nOpening issue(s) for findings with no auto-fix...\n")
 		for _, key := range unfixableOrder {
+			issueTitle := fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name)
 			fmt.Fprintf(os.Stderr, "  Opening issue for %s/%s ... ", key.namespace, key.name)
-			url, err := gh.CreateIssue(
-				fmt.Sprintf("kube-risk: %s/%s needs manual attention", key.namespace, key.name),
-				buildIssueBody(key.namespace, key.name, unfixable[key]),
-				[]string{"kube-risk"},
-			)
+			if existing, err := gh.FindOpenIssue(issueTitle); err == nil && existing != "" {
+				fmt.Fprintf(os.Stderr, "already open\n")
+				fmt.Printf("%s\n", existing)
+				issueCount++
+				continue
+			}
+			url, err := gh.CreateIssue(issueTitle, buildIssueBody(key.namespace, key.name, unfixable[key]), []string{"kube-risk"})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 				continue
