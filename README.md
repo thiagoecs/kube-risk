@@ -110,9 +110,9 @@ kube-risk pr \
 
 One PR is opened per workload with fixable findings. For workloads where every finding requires manual attention, a **GitHub Issue** is opened instead — so nothing gets silently dropped.
 
-**Fixable automatically (PR):** `single-replica`, `unsafe-rollout`, `missing-pdb`
+**Fixable automatically (PR):** `single-replica`, `unsafe-rollout`, `missing-pdb`, `hpa-min-replicas`, `daemonset-update-strategy`
 
-**Require manual fix (Issue):** `missing-readiness-probe`, `missing-liveness-probe`, `risky-statefulset`, `latest-image-tag`, `missing-resources`, `hpa-min-replicas`, `daemonset-update-strategy` — these depend on app-specific knowledge. LLM-assisted fixes are planned for a future version.
+**Require manual fix (Issue):** `missing-readiness-probe`, `missing-liveness-probe`, `risky-statefulset`, `latest-image-tag`, `missing-resources` — these depend on app-specific knowledge. LLM-assisted fixes are planned for a future version.
 
 ### Manifest format support
 
