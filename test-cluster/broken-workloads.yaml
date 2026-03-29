@@ -1,6 +1,11 @@
 # ============================================================
-# kube-risk test workloads — intentionally broken configurations
-# Each workload is designed to trigger one or more V1 rules.
+# CI-ONLY — DO NOT APPLY TO AKS OR ANY REAL CLUSTER
+#
+# Used exclusively by .github/workflows/ci.yml e2e tests via a
+# temporary kind cluster. The AKS test cluster mirrors the sample
+# repo (thiagoecs/kube-risk-sample-app) — production namespace only.
+#
+# To add a new rule scenario: add it here AND to the sample repo.
 # ============================================================
 
 # ── Namespace ────────────────────────────────────────────────
